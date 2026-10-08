@@ -1,0 +1,247 @@
+{
+  "id": "telegram-bot",
+  "version": "0.1.0-alpha.2",
+  "packageRevision": 1,
+  "name": {
+    "en": "Telegram Bot",
+    "zh-CN": "Telegram Bot"
+  },
+  "description": {
+    "en": "Private feed collector and notification dashboard. Set up the session before enabling collection.",
+    "zh-CN": "私有信息采集与通知面板。完成会话迁移或登录后启用采集。"
+  },
+  "license": "Apache-2.0",
+  "images": [
+    {
+      "name": "telegram-bot",
+      "reference": "${IMAGE_REFERENCE}"
+    }
+  ],
+  "services": [
+    {
+      "name": "dashboard",
+      "protocol": "http",
+      "containerPort": 8080,
+      "defaultHostPort": 18081,
+      "healthPath": "/healthz",
+      "management": true
+    }
+  ],
+  "homepage": {
+    "service": "dashboard",
+    "path": "/"
+  },
+  "config": [
+    {
+      "key": "tg_api_id",
+      "type": "integer",
+      "label": {
+        "en": "Telegram API ID",
+        "zh-CN": "Telegram API ID"
+      },
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "tg_api_hash",
+      "type": "string",
+      "label": {
+        "en": "Telegram API Hash",
+        "zh-CN": "Telegram API Hash"
+      },
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "tg_phone",
+      "type": "string",
+      "label": {
+        "en": "Telegram phone",
+        "zh-CN": "Telegram 手机号"
+      },
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "web_password",
+      "type": "string",
+      "label": {
+        "en": "Dashboard password",
+        "zh-CN": "管理密码"
+      },
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "web_username",
+      "type": "string",
+      "label": {
+        "en": "Administrator",
+        "zh-CN": "管理员"
+      },
+      "required": false,
+      "secret": false,
+      "default": "admin"
+    },
+    {
+      "key": "collector_enabled",
+      "type": "boolean",
+      "label": {
+        "en": "Enable collector after session setup",
+        "zh-CN": "启用采集（迁移或登录完成后开启）"
+      },
+      "required": false,
+      "secret": false,
+      "default": false
+    },
+    {
+      "key": "cookie_secure",
+      "type": "boolean",
+      "label": {
+        "en": "HTTPS-only cookies",
+        "zh-CN": "仅 HTTPS Cookie"
+      },
+      "required": false,
+      "secret": false,
+      "default": true
+    }
+  ],
+  "runtime": {
+    "kind": "docker",
+    "version": 1,
+    "storage": [
+      {
+        "name": "database",
+        "persistent": true
+      },
+      {
+        "name": "session",
+        "persistent": true
+      }
+    ],
+    "docker": {
+      "containers": [
+        {
+          "name": "collector",
+          "image": "telegram-bot",
+          "user": "10001:10001",
+          "command": [
+            {
+              "literal": "python"
+            },
+            {
+              "literal": "-m"
+            },
+            {
+              "literal": "app.main"
+            }
+          ],
+          "credentials": {
+            "tg-api-hash": "tg_api_hash",
+            "tg-phone": "tg_phone"
+          },
+          "environment": {
+            "DATABASE_PATH": {
+              "literal": "/database/messages.db"
+            },
+            "TG_API_ID": {
+              "config": "tg_api_id"
+            },
+            "TG_API_HASH_FILE": {
+              "runtime": {
+                "kind": "credential-file",
+                "name": "tg-api-hash"
+              }
+            },
+            "TG_PHONE_FILE": {
+              "runtime": {
+                "kind": "credential-file",
+                "name": "tg-phone"
+              }
+            },
+            "TG_SESSION_PATH": {
+              "literal": "/session/telegram"
+            },
+            "COLLECTOR_ENABLED": {
+              "config": "collector_enabled"
+            }
+          },
+          "mounts": [
+            {
+              "storage": "database",
+              "target": "/database"
+            },
+            {
+              "storage": "session",
+              "target": "/session"
+            }
+          ]
+        },
+        {
+          "name": "web",
+          "image": "telegram-bot",
+          "user": "10001:10001",
+          "command": [
+            {
+              "literal": "uvicorn"
+            },
+            {
+              "literal": "app.web:app"
+            },
+            {
+              "literal": "--host"
+            },
+            {
+              "literal": "0.0.0.0"
+            },
+            {
+              "literal": "--port"
+            },
+            {
+              "literal": "8080"
+            },
+            {
+              "literal": "--no-access-log"
+            }
+          ],
+          "credentials": {
+            "web-password": "web_password"
+          },
+          "environment": {
+            "DATABASE_PATH": {
+              "literal": "/database/messages.db"
+            },
+            "WEB_USERNAME": {
+              "config": "web_username"
+            },
+            "WEB_PASSWORD_FILE": {
+              "runtime": {
+                "kind": "credential-file",
+                "name": "web-password"
+              }
+            },
+            "WEB_COOKIE_SECURE": {
+              "config": "cookie_secure"
+            }
+          },
+          "mounts": [
+            {
+              "storage": "database",
+              "target": "/database"
+            }
+          ],
+          "ports": [
+            {
+              "service": "dashboard"
+            }
+          ],
+          "health": {
+            "service": "dashboard",
+            "path": "/healthz",
+            "timeoutSeconds": 30
+          }
+        }
+      ]
+    }
+  }
+}

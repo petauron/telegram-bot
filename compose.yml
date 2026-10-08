@@ -1,0 +1,80 @@
+services:
+  app:
+    image: ${TELEGRAM_BOT_IMAGE:?set a released image digest}
+    environment:
+      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-false}
+      TG_API_ID: ${TG_API_ID}
+      TG_API_HASH: ${TG_API_HASH}
+      TG_PHONE: ${TG_PHONE}
+      TG_SESSION_PATH: /session/telegram
+      PUSH_BOT_TOKEN: ${PUSH_BOT_TOKEN:-}
+      PUSH_CHAT_ID: ${PUSH_CHAT_ID:-}
+      WATCH_CHAT_IDS: ${WATCH_CHAT_IDS:-}
+      TRUSTED_SENDER_IDS: ${TRUSTED_SENDER_IDS:-}
+      IMPORTANT_KEYWORDS: ${IMPORTANT_KEYWORDS:-宕机,服务中断,停服,被墙,故障,维护,服务异常,服务恢复,漏洞,CVE,零日,0day,数据泄露,供应链攻击,安全事件,重大更新,版本发布,正式发布,开源,涨价,价格调整,退款政策,政策变更,封禁政策,新规,制裁}
+      DATABASE_PATH: /database/messages.db
+      RETENTION_DAYS: ${RETENTION_DAYS:-3}
+      ANALYSIS_WORKERS: ${ANALYSIS_WORKERS:-8}
+      ANALYSIS_BATCH_TARGET: ${ANALYSIS_BATCH_TARGET:-20}
+      ANALYSIS_BATCH_MAX_ITEMS: ${ANALYSIS_BATCH_MAX_ITEMS:-50}
+      ANALYSIS_BATCH_MAX_CHARS: ${ANALYSIS_BATCH_MAX_CHARS:-12000}
+      ANALYSIS_BATCH_MAX_WAIT_SECONDS: ${ANALYSIS_BATCH_MAX_WAIT_SECONDS:-2}
+    networks:
+      - services
+    volumes:
+      - ./data/database:/database
+      - ./data/session:/session
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    command: ["python", "-m", "app.main"]
+
+  web:
+    image: ${TELEGRAM_BOT_IMAGE:?set a released image digest}
+    environment:
+      DATABASE_PATH: /database/messages.db
+      WEB_USERNAME: ${WEB_USERNAME:-admin}
+      WEB_PASSWORD: ${WEB_PASSWORD}
+      WEB_COOKIE_SECURE: ${WEB_COOKIE_SECURE:-false}
+      WATCH_CHAT_IDS: ${WATCH_CHAT_IDS:-}
+      TRUSTED_SENDER_IDS: ${TRUSTED_SENDER_IDS:-}
+      IMPORTANT_KEYWORDS: ${IMPORTANT_KEYWORDS:-宕机,服务中断,停服,被墙,故障,维护,服务异常,服务恢复,漏洞,CVE,零日,0day,数据泄露,供应链攻击,安全事件,重大更新,版本发布,正式发布,开源,涨价,价格调整,退款政策,政策变更,封禁政策,新规,制裁}
+      RETENTION_DAYS: ${RETENTION_DAYS:-3}
+    networks:
+      - services
+    volumes:
+      - ./data/database:/database
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    depends_on:
+      - app
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    command: ["uvicorn", "app.web:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+
+networks:
+  services:
+    name: services
+    external: true

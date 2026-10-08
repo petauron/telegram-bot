@@ -1,0 +1,6 @@
+Telethon==1.44.0
+httpx==0.28.1
+fastapi==0.139.2
+uvicorn==0.51.0
+defusedxml==0.7.1
+websockets==15.0.1

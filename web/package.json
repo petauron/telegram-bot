@@ -1,0 +1,25 @@
+{
+  "name": "telegram-priority-admin",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs",
+    "qa": "node ../tests/browser_qa.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-is": "^19.2.7",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.0.5",
+    "playwright": "^1.55.0",
+    "vite": "8.1.5"
+  }
+}

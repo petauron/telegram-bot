@@ -1,0 +1,25 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+web/node_modules/
+app/web_static/
+data/*
+!data/.gitkeep
+backups/
+*.session*
+*.db*
+*.sqlite*
+*.bak
+*.pre-*
+.DS_Store
+
+# Local credentials and operational data
+.env.*
+!.env.example
+*.log
+*.sqlite*
+*.pem
+*.key
+backups/
+exports/

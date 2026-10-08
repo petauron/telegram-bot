@@ -1,0 +1,20 @@
+.git
+.env
+data
+__pycache__
+*.py[cod]
+*.session*
+*.db*
+.pytest_cache
+web/node_modules
+app/web_static
+
+# Local credentials and operational data
+.env.*
+!.env.example
+*.log
+*.sqlite*
+*.pem
+*.key
+backups/
+exports/
