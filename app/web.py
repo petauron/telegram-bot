@@ -132,7 +132,10 @@ PUSH_TEST_LOCK = asyncio.Lock()
 SESSION_STORE = SessionStore()
 LOGIN_LIMITER = LoginRateLimiter()
 USERNAME_DIGEST = hashlib.sha256(WEB_USERNAME.encode("utf-8")).digest()
-PASSWORD_DIGEST = hashlib.sha256(WEB_PASSWORD.encode("utf-8")).digest()
+PASSWORD_SALT = secrets.token_bytes(16)
+PASSWORD_DIGEST = hashlib.scrypt(
+    WEB_PASSWORD.encode("utf-8"), salt=PASSWORD_SALT, n=16384, r=8, p=1, dklen=32
+)
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 PUBLIC_API_PATHS = frozenset({"/api/auth/login", "/api/auth/session"})
 
@@ -551,7 +554,9 @@ async def auth_login(payload: LoginRequest, request: Request) -> Response:
         raise HTTPException(status_code=429, detail="登录暂不可用，请稍后再试")
 
     submitted_username = hashlib.sha256(payload.username.encode("utf-8")).digest()
-    submitted_password = hashlib.sha256(payload.password.encode("utf-8")).digest()
+    submitted_password = hashlib.scrypt(
+        payload.password.encode("utf-8"), salt=PASSWORD_SALT, n=16384, r=8, p=1, dklen=32
+    )
     username_matches = secrets.compare_digest(submitted_username, USERNAME_DIGEST)
     password_matches = secrets.compare_digest(submitted_password, PASSWORD_DIGEST)
     if not (username_matches & password_matches):
