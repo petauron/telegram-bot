@@ -25,3 +25,6 @@ or overwrite published releases. A stale run skips preparation when main moved.
 Local workflow edits alone do not activate releases. Push/review the changes,
 then verify the first version PR CI and release run before calling the migration
 complete. No local builds or tests are implied by this configuration change.
+
+Architecture digests are staged in the GitHub draft release, not Actions
+artifacts. Docker build record uploads are disabled; build caches are retained.
