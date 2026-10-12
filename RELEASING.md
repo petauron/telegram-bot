@@ -28,7 +28,9 @@ repair through a PR and dispatch `release.yml` on protected `main` with the
 original `failed_run_id`. The workflow requires real CI on its own exact commit,
 then derives the version and original source SHA from the failed main push run.
 It admits only that run's existing, unpublished draft pinned to the same SHA,
-with successful source preparation, Application checks and CodeQL. The usual
+with successful source preparation, Application checks and the three actual
+CodeQL analysis jobs on main (actions, Python and JavaScript/TypeScript), not
+the PR-only aggregate CodeQL status. The usual
 source/version/manifest checks, native image builds, digest assembly and draft
 publication steps still run. No manually supplied tag, version or source SHA is
 accepted; a missing draft, changed identity or already published release fails

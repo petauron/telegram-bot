@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 35
     permissions:
       actions: read
+      checks: read
       contents: write
       issues: write
       pull-requests: write
@@ -96,9 +97,11 @@ jobs:
           printf '%s' "$jobs" | jq -e '
             (.jobs | any(.name == "Prepare release from checked main" and .conclusion == "success")) and
             (.jobs | any(.name == "Publish GitHub release" and .conclusion == "success") | not)' >/dev/null
+          echo 'Verifying the original source Application checks and all three CodeQL analysis jobs'
           gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" --jq '
-            (.check_runs | any(.name == "Application checks" and .conclusion == "success")) and
-            (.check_runs | any(.name == "CodeQL" and .conclusion == "success"))' | grep -qx true
+            .check_runs as $checks |
+            ["Application checks", "Analyze (actions)", "Analyze (python)", "Analyze (javascript-typescript)"] |
+            all(. as $name | $checks | any(.name == $name and .conclusion == "success"))' | grep -qx true
           version=$(gh api "repos/$GITHUB_REPOSITORY/contents/VERSION?ref=$sha" --jq .content | base64 --decode)
           printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
           tag="v$version"
