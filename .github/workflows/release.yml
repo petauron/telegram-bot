@@ -2,6 +2,12 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      failed_run_id:
+        description: Failed release run whose original checked draft should be recovered
+        required: true
+        type: string
 permissions:
   contents: read
 env:
@@ -11,6 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prepare:
+    if: github.ref == 'refs/heads/main'
     name: Prepare release from checked main
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -20,9 +27,10 @@ jobs:
       issues: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      release_sha: ${{ steps.release.outputs.sha }}
-      release_tag: ${{ steps.release.outputs.tag_name }}
+      release_created: ${{ steps.recovery.outputs.release_created || steps.release.outputs.release_created }}
+      release_sha: ${{ steps.recovery.outputs.sha || steps.release.outputs.sha }}
+      release_tag: ${{ steps.recovery.outputs.tag_name || steps.release.outputs.tag_name }}
+      draft_pending: ${{ steps.current.outputs.draft_pending }}
     steps:
       - name: Wait for the exact source CI
         env:
@@ -49,8 +57,13 @@ jobs:
           if [ "$current" = "$GITHUB_SHA" ]; then
             echo "matches=true" >> "$GITHUB_OUTPUT"
           fi
+          if [ "$GITHUB_EVENT_NAME" = push ] && gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq 'any(.draft)' | grep -qx true; then
+            echo "draft_pending=true" >> "$GITHUB_OUTPUT"
+            echo 'An unpublished draft is pending. Recover its original failed run before preparing another release.'
+          fi
       - name: Create release without updating the next version PR
-        if: steps.current.outputs.matches == 'true'
+        if: github.event_name == 'push' && steps.current.outputs.matches == 'true' && steps.current.outputs.draft_pending != 'true'
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
@@ -62,6 +75,39 @@ jobs:
         env:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: test "$RELEASE_SHA" = "$GITHUB_SHA"
+      - name: Recover only the original checked draft from a failed release run
+        if: github.event_name == 'workflow_dispatch' && steps.current.outputs.matches == 'true'
+        id: recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+        run: |
+          set -eu
+          printf '%s' "$FAILED_RUN_ID" | grep -Eq '^[1-9][0-9]{0,19}$'
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .protected | grep -qx true
+          original=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID")
+          printf '%s' "$original" | jq -e --arg repo "$GITHUB_REPOSITORY" '
+            .repository.full_name == $repo and .event == "push" and
+            .path == ".github/workflows/release.yml" and .head_branch == "main" and
+            .status == "completed" and .conclusion == "failure"' >/dev/null
+          sha=$(printf '%s' "$original" | jq -er .head_sha)
+          printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'
+          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID/jobs?per_page=100")
+          printf '%s' "$jobs" | jq -e '
+            (.jobs | any(.name == "Prepare release from checked main" and .conclusion == "success")) and
+            (.jobs | any(.name == "Publish GitHub release" and .conclusion == "success") | not)' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" --jq '
+            (.check_runs | any(.name == "Application checks" and .conclusion == "success")) and
+            (.check_runs | any(.name == "CodeQL" and .conclusion == "success"))' | grep -qx true
+          version=$(gh api "repos/$GITHUB_REPOSITORY/contents/VERSION?ref=$sha" --jq .content | base64 --decode)
+          printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          tag="v$version"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,tagName |
+            jq -e --arg sha "$sha" --arg tag "$tag" '
+              .isDraft == true and .targetCommitish == $sha and .tagName == $tag' >/dev/null
+          echo 'release_created=true' >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$tag" >> "$GITHUB_OUTPUT"
 
   source:
     env:
@@ -73,7 +119,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read
+      # GitHub hides draft releases from tokens without push access.
+      # This trusted-main job needs write permission to verify the draft.
+      contents: write
       checks: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -87,7 +135,9 @@ jobs:
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           test "$(cat VERSION)" = "${RELEASE_TAG#v}"
           test "$(jq -r '."."' .release-please-manifest.json)" = "${RELEASE_TAG#v}"
-          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,tagName |
+            jq -e --arg sha "$RELEASE_SHA" --arg tag "$RELEASE_TAG" '
+              .isDraft == true and .targetCommitish == $sha and .tagName == $tag' >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs" --jq '.check_runs | any(.name == "Application checks" and .conclusion == "success")' | grep -qx true
   image:
     env:
@@ -181,7 +231,7 @@ jobs:
   release-pr:
     name: Prepare next version PR and start its CI
     needs: [prepare, publish]
-    if: always() && needs.prepare.result == 'success' && (needs.publish.result == 'success' || (needs.prepare.outputs.release_created != 'true' && needs.publish.result == 'skipped'))
+    if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.draft_pending != 'true' && (needs.publish.result == 'success' || (needs.prepare.outputs.release_created != 'true' && needs.publish.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

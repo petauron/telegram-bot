@@ -21,6 +21,25 @@ publication makes the draft public. Tags are not a second release entry point.
 On a build failure, use GitHub's Re-run failed jobs for that run; do not move tags
 or overwrite published releases. A stale run skips preparation when main moved.
 
+## Recovery after a release-workflow repair
+
+If the failed run cannot use a reviewed workflow repair by rerunning, merge that
+repair through a PR and dispatch `release.yml` on protected `main` with the
+original `failed_run_id`. The workflow requires real CI on its own exact commit,
+then derives the version and original source SHA from the failed main push run.
+It admits only that run's existing, unpublished draft pinned to the same SHA,
+with successful source preparation, Application checks and CodeQL. The usual
+source/version/manifest checks, native image builds, digest assembly and draft
+publication steps still run. No manually supplied tag, version or source SHA is
+accepted; a missing draft, changed identity or already published release fails
+closed. The original release remains unchanged until all publication steps pass.
+Normal main pushes leave any pending draft untouched and skip new release/version
+preparation until the original publication is recovered.
+
+GitHub exposes draft releases only to tokens with push access. The source
+verification job therefore needs `contents: write` solely to read the draft;
+it does not update releases or refs. No PAT or separate release secret is used.
+
 
 Local workflow edits alone do not activate releases. Push/review the changes,
 then verify the first version PR CI and release run before calling the migration
