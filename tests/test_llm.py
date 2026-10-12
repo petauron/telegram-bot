@@ -478,11 +478,11 @@ class LLMClientTests(unittest.IsolatedAsyncioTestCase):
         scoring_input = json.loads(scoring["payload"]["messages"][1]["content"])
         self.assertEqual(
             set(classification_input),
-            {"recent_context", "current_message"},
+            {"recent_context", "current_message", "source_context"},
         )
         self.assertEqual(
             set(scoring_input),
-            {"category", "recent_context", "current_message", "important_keywords"},
+            {"category", "recent_context", "current_message", "important_keywords", "source_context"},
         )
         expected_context = list(TEST_RECENT_CONTEXT)
         self.assertEqual(classification_input["recent_context"], expected_context)
@@ -604,6 +604,7 @@ class LLMClientTests(unittest.IsolatedAsyncioTestCase):
                     "text": "某平台发布账号封禁政策",
                 },
                 "important_keywords": ["政策", "漏洞"],
+                "source_context": {"name": "", "chat_type": "unknown", "source_type": "telegram"},
             },
         )
         self.assertIn("只对 current_message 评分", prompt)
@@ -673,7 +674,7 @@ class LLMClientTests(unittest.IsolatedAsyncioTestCase):
         for phrase in ("2–5 个短句", "换行分隔", "不要输出 Markdown 项目符号"):
             self.assertIn(phrase, prompt)
         user_payload = json.loads(payload["messages"][1]["content"])
-        self.assertEqual(set(user_payload), {"current_message"})
+        self.assertEqual(set(user_payload), {"current_message", "selected_summary", "source_context"})
         current_text = user_payload["current_message"]["text"]
         self.assertLessEqual(len(current_text), 8_000)
         self.assertLessEqual(len(current_text.encode("utf-8")), 24_000)

@@ -76,6 +76,8 @@ from app.push_config import (
 )
 from app.scoring import reply_bonus
 from app.semantic_update import validate_semantic_update
+from app.source_context import source_context_payload
+from app.chat_activity import initialize_chat_activity, record_watch_changes
 
 
 PUSH_SCORE_THRESHOLD = 60
@@ -136,6 +138,7 @@ class MessageRecord:
     source_type: str = "telegram"
     source_id: int | None = None
     source_external_id: str | None = None
+    media_text_unavailable: bool = False
 
 
 class Database:
@@ -149,7 +152,12 @@ class Database:
         if initialize:
             self.connection.execute("PRAGMA journal_mode=WAL")
             self.connection.execute("PRAGMA synchronous=NORMAL")
-            self._initialize_schema()
+            try:
+                self._initialize_schema()
+                initialize_chat_activity(self.connection)
+            except Exception:
+                self.connection.close()
+                raise
 
     def _initialize_schema(self) -> None:
         self.connection.executescript(
@@ -1147,27 +1155,36 @@ class Database:
         immediate_score: int,
         now: datetime,
     ) -> None:
-        self.connection.execute(
-            """
-            INSERT INTO runtime_config(
-                id, important_keywords_json, trusted_sender_ids_json, watch_chat_ids_json,
-                immediate_score, updated_at
-            ) VALUES(1, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                watch_chat_ids_json = COALESCE(
-                    runtime_config.watch_chat_ids_json,
-                    excluded.watch_chat_ids_json
-                )
-            """,
-            (
-                json.dumps(important_keywords, ensure_ascii=False),
-                json.dumps(sorted(trusted_sender_ids)),
-                json.dumps(sorted(watch_chat_ids)),
-                PUSH_SCORE_THRESHOLD,
+        with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            previous = self.get_runtime_config()
+            self.connection.execute(
+                """
+                INSERT INTO runtime_config(
+                    id, important_keywords_json, trusted_sender_ids_json, watch_chat_ids_json,
+                    immediate_score, updated_at
+                ) VALUES(1, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    watch_chat_ids_json = COALESCE(
+                        runtime_config.watch_chat_ids_json,
+                        excluded.watch_chat_ids_json
+                    )
+                """,
+                (
+                    json.dumps(important_keywords, ensure_ascii=False),
+                    json.dumps(sorted(trusted_sender_ids)),
+                    json.dumps(sorted(watch_chat_ids)),
+                    PUSH_SCORE_THRESHOLD,
+                    to_iso(now),
+                ),
+            )
+            saved = self.get_runtime_config()
+            record_watch_changes(
+                self.connection,
+                previous["watch_chat_ids"] if previous else frozenset(),
+                saved["watch_chat_ids"],
                 to_iso(now),
-            ),
-        )
-        self.connection.commit()
+            )
 
     def initialize_push_config(
         self,
@@ -1848,6 +1865,8 @@ class Database:
         if immediate_score != PUSH_SCORE_THRESHOLD:
             raise ValueError("实时推送阈值固定为 60 分")
         with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            previous = self.get_runtime_config()
             self.connection.execute(
                 """
                 INSERT INTO runtime_config(
@@ -1868,6 +1887,12 @@ class Database:
                     immediate_score,
                     to_iso(now),
                 ),
+            )
+            record_watch_changes(
+                self.connection,
+                previous["watch_chat_ids"] if previous else frozenset(),
+                watch_chat_ids,
+                to_iso(now),
             )
         value = self.get_runtime_config()
         if value is None:
@@ -2075,19 +2100,23 @@ class Database:
         ).fetchall()
         return frozenset(int(row["chat_id"]) for row in rows)
 
-    def message_chat_type(self, row_id: int) -> str:
-        """Return Telegram's recorded dialog type, failing closed for unknown sources."""
+    def message_source_context(self, row_id: int) -> dict[str, str]:
+        """Describe the recorded source without granting official-source trust."""
         row = self.connection.execute(
             """
-            SELECT chats.chat_type
+            SELECT message.chat_name, message.source_type, chats.chat_type
             FROM messages AS message
-            JOIN available_chats AS chats
-              ON chats.chat_id = message.chat_id AND chats.is_current = 1
-            WHERE message.id = ? AND message.source_type = 'telegram'
+            LEFT JOIN available_chats AS chats
+              ON chats.chat_id = message.chat_id
+             AND message.source_type = 'telegram'
+            WHERE message.id = ?
             """,
             (row_id,),
         ).fetchone()
-        return str(row["chat_type"]) if row is not None else "unknown"
+        return source_context_payload(
+            {"name": row["chat_name"], "chat_type": row["chat_type"],
+             "source_type": row["source_type"]} if row is not None else None
+        )
 
     def create_information_source(
         self,
@@ -2840,6 +2869,7 @@ class Database:
             evaluate_prequeue_prefilter(
                 record.text,
                 is_service_message=record.is_service_message,
+                media_text_unavailable=record.media_text_unavailable,
             )
             if enqueue_analysis
             else PrefilterResult(filtered=False)
@@ -2852,11 +2882,11 @@ class Database:
         with self.connection:
             cursor = self.connection.execute(
                 """
-                INSERT OR IGNORE INTO messages(
+                INSERT INTO messages(
                     chat_id, message_id, chat_name, chat_username, sender_id,
                     sender_name, sent_at, text, reply_to_message_id, thread_root_id,
                     base_score, local_score, reply_bonus, score, reasons_json, reply_count, link,
-                    normalized_text, primary_url, is_service_message,
+                    normalized_text, primary_url, is_service_message, media_text_unavailable,
                     source_type, source_id, source_external_id, created_at,
                     prefilter_status, prefilter_reason_code, prefilter_reason,
                     ai_status, ai_completed_at, push_gate_reason,
@@ -2865,8 +2895,9 @@ class Database:
                     analysis_queue_available_at
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
+                ON CONFLICT DO NOTHING
                 """,
                 (
                     record.chat_id,
@@ -2887,6 +2918,7 @@ class Database:
                     record.normalized_text,
                     record.primary_url,
                     int(record.is_service_message),
+                    int(record.media_text_unavailable),
                     record.source_type,
                     record.source_id,
                     record.source_external_id,
@@ -6474,11 +6506,35 @@ class Database:
                 chats.chat_type,
                 chats.username,
                 COUNT(messages.id) AS message_count,
+                COUNT(receipts.message_row_id) AS retained_pushed_count,
+                SUM(CASE WHEN messages.media_text_unavailable = 1 THEN 1 ELSE 0 END)
+                    AS retained_media_unread_count,
+                SUM(CASE WHEN messages.media_text_unavailable = 0 AND (
+                    messages.ai_status IN ('prefiltered', 'filtered_non_information')
+                    OR (messages.ai_status = 'success' AND COALESCE(messages.ai_score, 0) < 60)
+                    OR messages.push_gate_reason IN ('semantic_duplicate_suppressed', 'semantic_superseded')
+                ) THEN 1 ELSE 0 END) AS retained_filtered_count,
+                SUM(CASE WHEN EXISTS(
+                    SELECT 1 FROM deliveries WHERE message_row_id = messages.id AND state = 'failed'
+                ) THEN 1 ELSE 0 END) AS retained_failed_push_count,
+                SUM(CASE WHEN messages.ai_status IN ('error', 'unavailable') THEN 1 ELSE 0 END)
+                    AS retained_analysis_error_count,
+                SUM(CASE WHEN messages.analysis_queue_state IN ('queued', 'processing', 'retry')
+                         THEN 1 ELSE 0 END) AS retained_pending_count,
+                SUM(CASE WHEN messages.ai_status = 'disabled' THEN 1 ELSE 0 END)
+                    AS retained_disabled_count,
+                activity.recorded_count, activity.successful_push_count,
+                activity.media_unread_count, activity.last_received_at,
+                activity.last_successful_push_at, activity.statistics_started_at,
+                activity.includes_partial_history, activity.watch_started_at,
+                activity.watch_start_known,
                 chats.updated_at
             FROM available_chats AS chats
             LEFT JOIN messages
               ON messages.chat_id = chats.chat_id
              AND messages.created_at >= ?
+            LEFT JOIN chat_push_receipts AS receipts ON receipts.message_row_id = messages.id
+            LEFT JOIN chat_activity AS activity ON activity.chat_id = chats.chat_id
             WHERE chats.is_current = 1
             GROUP BY chats.chat_id
             HAVING (? = 0 OR COUNT(messages.id) > 0)
@@ -6495,6 +6551,25 @@ class Database:
                 "chat_type": str(row["chat_type"]),
                 "username": row["username"],
                 "message_count": int(row["message_count"]),
+                "window_hours": hours,
+                "activity": {
+                    "recorded_count": int(row["recorded_count"] or 0),
+                    "successful_push_count": int(row["successful_push_count"] or 0),
+                    "media_unread_count": int(row["media_unread_count"] or 0),
+                    "last_received_at": row["last_received_at"],
+                    "last_successful_push_at": row["last_successful_push_at"],
+                    "statistics_started_at": row["statistics_started_at"],
+                    "includes_partial_history": bool(row["includes_partial_history"]),
+                    "watch_started_at": row["watch_started_at"],
+                    "watch_start_known": bool(row["watch_start_known"]),
+                    "retained_pushed_count": int(row["retained_pushed_count"] or 0),
+                    "retained_filtered_count": int(row["retained_filtered_count"] or 0),
+                    "retained_failed_push_count": int(row["retained_failed_push_count"] or 0),
+                    "retained_analysis_error_count": int(row["retained_analysis_error_count"] or 0),
+                    "retained_pending_count": int(row["retained_pending_count"] or 0),
+                    "retained_disabled_count": int(row["retained_disabled_count"] or 0),
+                    "retained_media_unread_count": int(row["retained_media_unread_count"] or 0),
+                },
                 "watched": int(row["chat_id"]) in watched,
                 "updated_at": str(row["updated_at"]),
             }
@@ -6698,6 +6773,7 @@ class Database:
         value["ai_category_label"] = category_label(value.get("ai_category"))
         value["push_eligible"] = bool(value.get("push_eligible"))
         value["is_service_message"] = bool(value.get("is_service_message"))
+        value["media_text_unavailable"] = bool(value.get("media_text_unavailable"))
         value["semantic_dedupe_material_update"] = bool(
             value.get("semantic_dedupe_material_update")
         )

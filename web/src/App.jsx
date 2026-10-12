@@ -435,7 +435,13 @@ function Dashboard({ username, onUnauthorized, onLogout }) {
       })
       setConfig((current) => ({ ...current, ...saved }))
       setForm(parseConfig(saved))
-      setToast({ type: 'success', message: '监听与评分规则已保存并立即生效' })
+      try {
+        const chatData = await api('/api/chats?hours=720')
+        setAvailableChats(chatData.items)
+        setToast({ type: 'success', message: '监听与评分规则已保存并立即生效' })
+      } catch {
+        setToast({ type: 'error', message: '监听规则已保存并生效，但统计刷新失败；请刷新页面核对' })
+      }
     } catch (error) {
       handleRequestError(error)
     } finally {

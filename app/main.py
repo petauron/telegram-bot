@@ -35,7 +35,7 @@ from app.newsletter_imap import NewsletterImapPoller
 from app.ntfy_feedback import NtfyFeedbackCollector
 from app.push import PushDispatcher
 from app.scoring import normalize_text, score_message
-from app.utils import display_name, extract_processable_text, message_link
+from app.utils import display_name, extract_processable_text, image_text_unavailable, message_link
 
 
 LOGGER = logging.getLogger("telegram_priority")
@@ -90,6 +90,9 @@ class MessageProcessor:
         message = event.message
         is_service_message = bool(getattr(message, "action", None))
         text = extract_processable_text(message)
+        unread_image = image_text_unavailable(message)
+        if unread_image and not text:
+            text = "图片消息（未启用图片文字识别）"
         if not text and is_service_message:
             action_name = type(getattr(message, "action", None)).__name__[:80]
             text = f"Telegram 服务事件：{action_name}"
@@ -156,6 +159,7 @@ class MessageProcessor:
             primary_url=scoring.primary_url,
             created_at=to_iso(observed_at),
             is_service_message=is_service_message,
+            media_text_unavailable=unread_image,
         )
         if not self.database.insert_message(
             record,

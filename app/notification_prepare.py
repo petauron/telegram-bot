@@ -28,7 +28,8 @@ PREPARATION_FINAL_STATUSES = frozenset({"success", "failed_fallback"})
 
 def deterministic_notification_fallback(row: dict[str, Any]) -> tuple[str, str]:
     title = clean_notification_title(str(row.get("ai_summary") or ""))
-    body = clean_notification_body(str(row.get("text") or ""))
+    # A failed preparation must not reintroduce unselected digest items.
+    body = clean_notification_body(str(row.get("ai_summary") or row.get("text") or ""))
     if not title:
         for line in str(row.get("text") or "").splitlines():
             title = clean_notification_title(line)
@@ -126,6 +127,8 @@ async def prepare_persisted_notification(
             sent_at=str(prepared.get("sent_at") or prepared.get("created_at") or ""),
             text=str(prepared.get("text") or ""),
             session_key=database.llm_session_key(int(prepared["chat_id"])),
+            selected_summary=str(prepared.get("ai_summary") or ""),
+            source_context=database.message_source_context(row_id),
         )
     except Exception:
         outcome = NotificationPreparationOutcome(

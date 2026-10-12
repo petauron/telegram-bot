@@ -151,6 +151,7 @@ class CommunityInsightPipelineTests(unittest.IsolatedAsyncioTestCase):
                 "conversation_evidence",
                 "current_message",
                 "important_keywords",
+                "source_context",
             },
         )
         self.assertNotIn("chat_id", community_request["messages"][1]["content"])
