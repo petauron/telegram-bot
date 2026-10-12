@@ -548,8 +548,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chat-type { color: var(--muted); font-size: 9.5px; }
 .chat-option-main { min-width: 0; display: grid; gap: 3px; }
 .chat-option-main strong { overflow: hidden; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
-.chat-option-main small { overflow: hidden; color: var(--quiet); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.chat-message-count { color: var(--quiet); font-size: 9.5px; white-space: nowrap; }
+.chat-option-main small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.chat-message-count { display: grid; gap: 3px; min-width: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .chat-picker-note { margin: 0; padding: 14px 22px; color: var(--muted); font-size: 9.5px; line-height: 16px; }
 .chat-list-empty { min-height: 180px; color: var(--muted); display: grid; place-items: center; font-size: 11px; }
 .rule-fields { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(240px, .8fr); gap: 22px; }

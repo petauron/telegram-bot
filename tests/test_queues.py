@@ -726,6 +726,28 @@ class MaintenanceLoopTests(unittest.IsolatedAsyncioTestCase):
 
 
 class StubModelClient:
+    async def classify_batch(self, *, config, messages, **kwargs) -> BatchClassificationOutcome:
+        outcomes = {}
+        unresolved = []
+        error_category = None
+        for item in messages:
+            outcome = await self.classify(
+                config=config, sent_at=item["time"], text=item["text"],
+                source_context=item.get("source_context"), **kwargs,
+            )
+            row_id = item["message_row_id"]
+            if outcome.status == "success":
+                outcomes[row_id] = outcome
+            else:
+                unresolved.append(row_id)
+                error_category = outcome.error_category
+        return BatchClassificationOutcome(
+            status="success" if not unresolved else ("partial" if outcomes else "error"),
+            model=config.classification_model, outcomes=outcomes,
+            unresolved_row_ids=tuple(unresolved), error_category=error_category,
+            effort=config.classification_reasoning_effort,
+        )
+
     async def classify(self, **_: object) -> ClassificationOutcome:
         return ClassificationOutcome(
             status="success",
@@ -750,7 +772,7 @@ class StubModelClient:
         )
 
 
-class StructuredResponseModelClient:
+class StructuredResponseModelClient(StubModelClient):
     def __init__(self, *, always_invalid: bool = False) -> None:
         self.always_invalid = always_invalid
         self.classification_calls = 0

@@ -61,6 +61,24 @@ def extract_processable_text(message: Any) -> str:
     return "\n".join(parts).strip()
 
 
+def image_text_unavailable(message: Any) -> bool:
+    """Detect captionless photos/images without downloading or inspecting them."""
+    if (getattr(message, "raw_text", None) or "").strip():
+        return False
+    media = getattr(message, "media", None)
+    if isinstance(media, types.MessageMediaPhoto):
+        return True
+    document = getattr(media, "document", None)
+    return bool(
+        isinstance(media, types.MessageMediaDocument)
+        and str(getattr(document, "mime_type", "") or "").startswith("image/")
+        and not any(
+            isinstance(attribute, types.DocumentAttributeSticker)
+            for attribute in getattr(document, "attributes", ())
+        )
+    )
+
+
 def clean_one_line(text: str, limit: int) -> str:
     compact = re.sub(r"\s+", " ", text).strip()
     if len(compact) <= limit:

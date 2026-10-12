@@ -759,7 +759,7 @@ class PushDispatcher:
     def _with_source_context(self, row: dict[str, Any]) -> dict[str, Any]:
         row_id = row.get("id")
         chat_type = (
-            self._database.message_chat_type(int(row_id))
+            self._database.message_source_context(int(row_id))["chat_type"]
             if row_id is not None and row.get("content_kind") == "benefit_deal"
             else "unknown"
         )

@@ -120,8 +120,41 @@ class BenefitProtocolTests(unittest.TestCase):
         self.assertTrue(filtered[5])
         self.assertTrue(filtered[6])
 
+    def test_existing_customer_quota_units_and_risk_boundaries(self) -> None:
+        for text in (
+            "我们为 500G 老套餐赠送了 100G 月流量，永久有效",
+            "存量套餐增加 1T 月流量，无需领取",
+            "云存储老客户补偿 20GiB 容量",
+            "老套餐免费扩容存储至 2TB",
+            "赠送 1GB 额度",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(should_assess_benefit(text))
+        for text in (
+            "赠送 100Gbps",
+            "赠送 100GB/s",
+            "赠送 5G 手机",
+            "升级到 1Gbps 端口",
+            "套餐升级，性能更强",
+            "拉人头返佣赠送 1T 流量",
+            "私聊付款领取 100G 月流量",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(should_assess_benefit(text))
+
 
 class BenefitPipelineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_legacy_package_quota_reaches_benefit_model_without_lowering_threshold(self) -> None:
+        result = await self.analyze(record(902, "我们为500G老套餐赠送100G月流量，永久有效"))
+        request = next(item for item in self.server.requests if item.get("stage") == "benefit")
+        prompt = request["payload"]["messages"][0]["content"]
+        payload = json.loads(request["payload"]["messages"][1]["content"])
+        self.assertIn("无需领取或无截止日期", prompt)
+        self.assertIn("而非Gbps带宽", prompt)
+        self.assertEqual(payload["source_context"]["name"], "去标识优惠来源")
+        self.assertEqual(result["content_kind"], "benefit_deal")
+        self.assertNotEqual(result["benefit_model"], "local-gate")
+
     async def test_benefit_request_includes_correction_context(self) -> None:
         database = Database(self.path)
         database.insert_message(record(900, "ExampleCloud 补货消息是假的，旧图仍未补货"))
@@ -131,7 +164,9 @@ class BenefitPipelineTests(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(request["payload"]["messages"][1]["content"])
         prompt = request["payload"]["messages"][0]["content"]
         self.assertIn("假的", str(payload["recent_context"]))
-        self.assertEqual(payload["source_context"], {"chat_type": "unknown"})
+        self.assertEqual(payload["source_context"], {
+            "chat_type": "unknown", "name": "去标识优惠来源", "source_type": "telegram",
+        })
         self.assertIn("同一事件如有未解决的明确反驳", prompt)
         self.assertIn("不因 recent_context 为空而降级", prompt)
 
@@ -246,7 +281,9 @@ class BenefitPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("tools", payload)
         user_payload = json.loads(payload["messages"][1]["content"])
         self.assertEqual(set(user_payload), {"current_message", "important_keywords", "source_context"})
-        self.assertEqual(user_payload["source_context"], {"chat_type": "unknown"})
+        self.assertEqual(user_payload["source_context"], {
+            "chat_type": "unknown", "name": "去标识优惠来源", "source_type": "telegram",
+        })
         self.assertNotIn("chat_id", payload["messages"][1]["content"])
         self.assertNotIn("sender", payload["messages"][1]["content"])
         self.assertEqual(result["content_kind"], "benefit_deal")
@@ -335,7 +372,8 @@ class BenefitPipelineTests(unittest.IsolatedAsyncioTestCase):
         request = next(item for item in self.server.requests if item.get("stage") == "benefit")
         user_payload = json.loads(request["payload"]["messages"][1]["content"])
         prompt = request["payload"]["messages"][0]["content"]
-        self.assertEqual(user_payload["source_context"], {"chat_type": "channel"})
+        self.assertEqual(user_payload["source_context"]["chat_type"], "channel")
+        self.assertEqual(user_payload["source_context"]["name"], "去标识优惠来源")
         self.assertIn("不必再要求第二份官方公告", prompt)
         self.assertIn("频道仅转发论坛标题", prompt)
         self.assertTrue(result["push_eligible"])
@@ -369,7 +407,7 @@ class BenefitPipelineTests(unittest.IsolatedAsyncioTestCase):
         )
         request = next(item for item in self.server.requests if item.get("stage") == "benefit")
         user_payload = json.loads(request["payload"]["messages"][1]["content"])
-        self.assertEqual(user_payload["source_context"], {"chat_type": "group"})
+        self.assertEqual(user_payload["source_context"]["chat_type"], "group")
         self.assertEqual(result["benefit_status"], "filtered")
         self.assertFalse(result["push_eligible"])
 

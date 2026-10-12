@@ -7,6 +7,7 @@ from enum import StrEnum
 
 
 class PrefilterReason(StrEnum):
+    IMAGE_TEXT_UNAVAILABLE = "image_text_unavailable"
     RECENT_EXACT_DUPLICATE = "recent_exact_duplicate"
     TELEGRAM_SERVICE_MESSAGE = "telegram_service_message"
     SYMBOLS_ONLY = "symbols_only"
@@ -24,6 +25,7 @@ class PrefilterReason(StrEnum):
 
 
 PREFILTER_REASON_LABELS: dict[PrefilterReason, str] = {
+    PrefilterReason.IMAGE_TEXT_UNAVAILABLE: "纯图片消息未启用图片文字识别，无法评估图片内容",
     PrefilterReason.RECENT_EXACT_DUPLICATE: "同群 72 小时内已处理过相同内容",
     PrefilterReason.TELEGRAM_SERVICE_MESSAGE: "Telegram 服务事件",
     PrefilterReason.SYMBOLS_ONLY: "仅包含 Emoji、符号、标点或空白",
@@ -53,6 +55,7 @@ class PrefilterResult:
 # not accidentally moved ahead of same-chat ordering or community context.
 PREQUEUE_SAFE_REASONS = frozenset(
     {
+        PrefilterReason.IMAGE_TEXT_UNAVAILABLE.value,
         PrefilterReason.TELEGRAM_SERVICE_MESSAGE.value,
         PrefilterReason.SYMBOLS_ONLY.value,
         PrefilterReason.BARE_LINK.value,
@@ -356,9 +359,12 @@ def evaluate_prefilter(
     *,
     is_service_message: bool = False,
     protected_keywords: tuple[str, ...] = (),
+    media_text_unavailable: bool = False,
 ) -> PrefilterResult:
     """Apply conservative, local-only workflow filters before model analysis."""
     candidate = str(text or "").strip()
+    if media_text_unavailable:
+        return _result(PrefilterReason.IMAGE_TEXT_UNAVAILABLE)
     if is_service_message:
         return _result(PrefilterReason.TELEGRAM_SERVICE_MESSAGE)
     if _is_symbols_only(candidate):
@@ -394,6 +400,7 @@ def evaluate_prequeue_prefilter(
     text: str,
     *,
     is_service_message: bool = False,
+    media_text_unavailable: bool = False,
 ) -> PrefilterResult:
     """Return only deterministic results safe before durable queue creation.
 
@@ -401,7 +408,10 @@ def evaluate_prequeue_prefilter(
     in the ordered worker pipeline because they can depend on protected terms,
     same-thread evidence, earlier messages, or terminal processing state.
     """
-    result = evaluate_prefilter(text, is_service_message=is_service_message)
+    result = evaluate_prefilter(
+        text, is_service_message=is_service_message,
+        media_text_unavailable=media_text_unavailable,
+    )
     if result.filtered and result.reason_code in PREQUEUE_SAFE_REASONS:
         return result
     return PrefilterResult(filtered=False)

@@ -44,8 +44,9 @@ Git push, image release or catalog publication.
 ## Development and release
 
 Production data and secrets must remain outside this repository. CI runs Python and frontend tests and builds web assets.
-A `vVERSION` tag on a successful main commit builds the two native images and
-publishes their immutable multiarchitecture index. See `VERSION`.
+Release Please maintains the version PR. After its CI succeeds and it is merged,
+GitHub Actions builds the two native images and publishes their immutable
+multiarchitecture index from that checked main commit. See `RELEASING.md`.
 
 ## Configuration and privacy
 
@@ -75,3 +76,40 @@ its image placeholder with the verified release digest before packaging it.
 Licensed under Apache-2.0; see `LICENSE`. Third-party dependencies retain their
 own licenses. For vulnerability reports and handling sensitive data, see
 `SECURITY.md`.
+
+## Source context and monitoring statistics
+
+Classification, scoring, community and benefit assessment receive the recorded
+source name and dialog type as bounded context. A name or a broadcast channel is
+not an official-source verification. The push threshold remains 60; scam,
+referral and VPS bandwidth exclusions remain in effect. Existing-customer quota
+upgrades recognize G/T as capacity only with a quota/capacity context, not Gbps.
+Practical self-hosted tools are judged by their concrete usefulness, not fame.
+For mixed digests, scoring and notification preparation focus on one independently
+valuable item rather than promoting unrelated rumors or averaging them into it.
+
+The watch picker separates recorded messages, filtered content, analysis failures,
+delivery failures and unread images. Cumulative recorded/pushed/image counters
+survive message retention cleanup. A successful push means at least one delivery
+target recorded success; a second target's failure remains visible and two
+successful targets count as one message. Filtering and error counts shown in the
+retained window are not lifetime totals.
+
+The forward-only activity migration creates a verified, owner-readable SQLite
+backup beside the database before modifying a populated instance. Backup or
+migration failure prevents startup; no automatic downgrade is supported. Protect
+these backups like the original database, and do not publish them. Retained old
+messages seed only a partial historical baseline. Old subscription start times
+are marked unknown, not invented. Subsequent watch enable/disable events and each
+new listening interval are persisted atomically with the watch configuration.
+Upgrading never queues or pushes historical messages.
+
+Image OCR is not enabled: the collector does not download images or send them
+to the model API. Captionless photos/image documents are stored as unread-image
+audit records and do not invoke the model. Captions continue through the normal
+text pipeline. Old file-only image records can be marked unread from metadata;
+images previously discarded without a record cannot be reconstructed.
+
+An absence of recorded messages alone does not prove a collection fault. Compare the watch
+configuration start time, source posts and collector heartbeat before concluding
+that updates were lost. There is no automatic Telegram history backfill.

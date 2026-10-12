@@ -297,41 +297,6 @@ class PersistentAnalysisQueue:
             if latest is not None:
                 await self._on_live_success(latest)
 
-    async def _fallback_classify_batch(
-        self,
-        *,
-        config: Any,
-        items: list[dict[str, Any]],
-        session_key: str,
-        recent_context: tuple[dict[str, str], ...],
-    ) -> BatchClassificationOutcome:
-        """Compatibility path for injected test clients that only implement classify."""
-        outcomes: dict[int, ClassificationOutcome] = {}
-        unresolved: list[int] = []
-        error_category: str | None = None
-        for item in items:
-            outcome = await self._client.classify(
-                config=config,
-                sent_at=str(item["time"]),
-                text=str(item["text"]),
-                session_key=session_key,
-                recent_context=recent_context,
-            )
-            row_id = int(item["message_row_id"])
-            if outcome.status == "success" and outcome.category is not None:
-                outcomes[row_id] = outcome
-            else:
-                unresolved.append(row_id)
-                error_category = outcome.error_category or "invalid_response"
-        return BatchClassificationOutcome(
-            status=("success" if not unresolved else ("partial" if outcomes else "error")),
-            model=str(config.classification_model),
-            outcomes=outcomes,
-            unresolved_row_ids=tuple(unresolved),
-            error_category=error_category,
-            effort=str(config.classification_reasoning_effort),
-        )
-
     async def _classify_batch_subset(
         self,
         *,
@@ -350,21 +315,12 @@ class PersistentAnalysisQueue:
         if not items:
             return {}, {}
         try:
-            classify_batch = getattr(self._client, "classify_batch", None)
-            if callable(classify_batch):
-                outcome = await classify_batch(
-                    config=config,
-                    messages=tuple(items),
-                    session_key=session_key,
-                    recent_context=recent_context,
-                )
-            else:
-                outcome = await self._fallback_classify_batch(
-                    config=config,
-                    items=items,
-                    session_key=session_key,
-                    recent_context=recent_context,
-                )
+            outcome = await self._client.classify_batch(
+                config=config,
+                messages=tuple(items),
+                session_key=session_key,
+                recent_context=recent_context,
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -590,6 +546,7 @@ class PersistentAnalysisQueue:
                             or ""
                         ),
                         "text": str(rows_by_id[int(job["message_row_id"])].get("text") or ""),
+                        "source_context": database.message_source_context(int(job["message_row_id"])),
                     }
                     for job in unclassified_jobs
                 ]
