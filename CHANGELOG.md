@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.6](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.5...v0.1.0-alpha.6) (2026-10-20)
+
+
+### Bug Fixes
+
+* classify verified service sender announcements before weighting ([#11](https://github.com/petauron/telegram-bot/issues/11)) ([e889d5a](https://github.com/petauron/telegram-bot/commit/e889d5a3cbade659c3b702d11b5a9c9645623a77))
+
 ## [0.1.0-alpha.5](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.4...v0.1.0-alpha.5) (2026-10-20)
 
 
