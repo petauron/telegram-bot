@@ -1145,6 +1145,10 @@ def classification_system_prompt(*, batched: bool = False) -> str:
         "补充待分类消息未表达的事实。"
     )
     base += SOURCE_CONTEXT_INSTRUCTIONS
+    base += (
+        "已核实 service_announcer 自身明确发布的售卖安排、放货或调价公告归 external_information，"
+        "优先于上面的普通补货福利或群聊规则，交由评分判断价值；不因身份把闲聊升级为公告。"
+    )
     if not batched:
         return (
             base
@@ -2392,6 +2396,8 @@ async def analyze_persisted_message(
     protected_keywords = (
         tuple(runtime.get("important_keywords") or ()) if runtime is not None else ()
     )
+    if database.message_source_context(int(row["id"])).get("verified_sender_role") == "service_announcer":
+        protected_keywords += ("放货", "补货", "调价", "涨价", "降价", "开售", "售罄", "库存")
     prefilter = evaluate_prefilter(
         str(row.get("text") or ""),
         is_service_message=bool(row.get("is_service_message")),
@@ -2894,6 +2900,8 @@ def preflight_persisted_message_for_batch(
     protected_keywords = (
         tuple(runtime.get("important_keywords") or ()) if runtime is not None else ()
     )
+    if database.message_source_context(int(row["id"])).get("verified_sender_role") == "service_announcer":
+        protected_keywords += ("放货", "补货", "调价", "涨价", "降价", "开售", "售罄", "库存")
     prefilter = evaluate_prefilter(
         str(row.get("text") or ""),
         is_service_message=bool(row.get("is_service_message")),

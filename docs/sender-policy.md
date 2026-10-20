@@ -28,3 +28,18 @@ notification preparation are not bypassed. The default bonus is 40.
 Policy is stored in the existing metadata table under
 `analysis_sender_policy:<chat-id>`. Do not put real group/user IDs, credentials,
 database backups or deployment details in the repository.
+
+For independently verified service representatives or announcement bots, add
+`--service-announcers <user-id> ...` (a subset of `--allow`). Classification and
+scoring receive a bounded service-announcer role derived from the exact chat and
+sender ID, never from a nickname or message text. Concrete stock/release/price
+announcements enter information scoring; ordinary conversation remains filtered.
+Short stock/price signals are protected from the short-text prefilter, not from
+deduplication or other safety gates. Existing policies without this explicit
+role do not grant service-announcer identity.
+
+To reprocess retained history, back up first and use the existing
+`Database.enqueue_manual_analysis` for the selected chat/sender message IDs.
+This creates new job generations, preserves raw text and suppresses automatic
+historical notifications. It does not merely add a bonus to a previously
+weighted score; successful reanalysis recomputes the score from the model result.
