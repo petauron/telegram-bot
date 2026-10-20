@@ -2943,7 +2943,25 @@ class Database:
                        updated_at = ?, completed_at = ? WHERE id = ?""",
                     [(timestamp, timestamp, row["id"]) for row in rows],
                 )
+                self.connection.executemany(
+                    """UPDATE analysis_batch_items
+                       SET state = 'local_terminal', error_category = NULL, updated_at = ?
+                       WHERE job_id = ? AND state IN ('claimed', 'classified', 'retry')""",
+                    [(timestamp, row["id"]) for row in rows],
+                )
                 count += len(rows)
+            batches = self.connection.execute(
+                """SELECT id FROM analysis_batches WHERE chat_id = ?
+                   AND state = 'processing'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM analysis_batch_items i
+                       WHERE i.batch_id = analysis_batches.id
+                         AND i.state IN ('claimed', 'classified', 'retry')
+                   )""",
+                (chat_id,),
+            ).fetchall()
+            for batch in batches:
+                self.finish_analysis_batch(int(batch["id"]), now=now)
         return count
 
     def insert_message(
