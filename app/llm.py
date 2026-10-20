@@ -2352,6 +2352,12 @@ async def analyze_persisted_message(
     manual: bool = False,
     semantic_gate: Any | None = None,
 ) -> dict[str, Any]:
+    sender_filter = database.sender_policy_filter(
+        int(row["chat_id"]), row.get("sender_id"), str(row.get("source_type") or "telegram")
+    )
+    if sender_filter.filtered:
+        database.record_prefilter_result(int(row["id"]), result=sender_filter, now=now)
+        return database.get_message_by_id(int(row["id"]))
     if not manual and row.get("notification_prepare_status") == "preparing":
         from app.notification_prepare import deterministic_notification_fallback
 
@@ -2850,6 +2856,12 @@ def preflight_persisted_message_for_batch(
     now: datetime,
 ) -> BatchPreflightResult:
     """Run every safe/contextual local gate before a live batch LLM request."""
+    sender_filter = database.sender_policy_filter(
+        int(row["chat_id"]), row.get("sender_id"), str(row.get("source_type") or "telegram")
+    )
+    if sender_filter.filtered:
+        database.record_prefilter_result(int(row["id"]), result=sender_filter, now=now)
+        return BatchPreflightResult(ready=False)
     if row.get("notification_prepare_status") == "preparing":
         from app.notification_prepare import deterministic_notification_fallback
 

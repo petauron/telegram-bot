@@ -94,12 +94,19 @@ class PersistentAnalysisQueue:
         self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self) -> dict[str, int]:
+        filtered = await asyncio.to_thread(
+            _database_call,
+            self._database_path,
+            "apply_pending_sender_policies",
+            now=utc_now(),
+        )
         recovered = await asyncio.to_thread(
             _database_call,
             self._database_path,
             "recover_analysis_jobs",
             now=utc_now(),
         )
+        recovered["sender_policy_filtered"] = filtered
         recovered["semantic_dedupe"] = await asyncio.to_thread(
             _database_call,
             self._database_path,

@@ -2856,6 +2856,114 @@ class Database:
     def close(self) -> None:
         self.connection.close()
 
+    def sender_policy(self, chat_id: int) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            "SELECT value FROM metadata WHERE key = ?",
+            (f"analysis_sender_policy:{chat_id}",),
+        ).fetchone()
+        if row is None:
+            return None
+        policy = json.loads(row["value"])
+        allowed = policy.get("allowed_sender_ids")
+        bonus = policy.get("score_bonus", 0)
+        if (
+            not isinstance(allowed, list) or not allowed
+            or any(type(value) is not int or value <= 0 for value in allowed)
+            or type(bonus) is not int or not 0 <= bonus <= 100
+        ):
+            raise ValueError("发送者白名单配置无效")
+        return {"allowed_sender_ids": allowed, "score_bonus": bonus}
+
+    def sender_policy_filter(
+        self, chat_id: int, sender_id: int | None, source_type: str = "telegram"
+    ) -> PrefilterResult:
+        policy = self.sender_policy(chat_id) if source_type == "telegram" else None
+        if policy is not None and sender_id not in policy["allowed_sender_ids"]:
+            return PrefilterResult(
+                filtered=True,
+                reason_code="sender_not_allowed",
+                reason="该群发送者不在分析白名单中；原文保留",
+            )
+        return PrefilterResult(filtered=False)
+
+    def sender_weighted_score(self, row_id: int, score: int) -> int:
+        row = self.connection.execute(
+            "SELECT chat_id, sender_id, source_type FROM messages WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+        if row is None or row["source_type"] != "telegram":
+            return score
+        policy = self.sender_policy(int(row["chat_id"]))
+        if policy is None or row["sender_id"] not in policy["allowed_sender_ids"]:
+            return score
+        return min(100, score + policy["score_bonus"])
+
+    def apply_pending_sender_policies(self, *, now: datetime) -> int:
+        """Run before workers start; retain raw messages and terminal job history."""
+        keys = self.connection.execute(
+            "SELECT key FROM metadata WHERE key LIKE 'analysis_sender_policy:%'"
+        ).fetchall()
+        count = 0
+        for key in keys:
+            chat_id = int(key["key"].split(":", 1)[1])
+            policy = self.sender_policy(chat_id)
+            assert policy is not None
+            allowed = policy["allowed_sender_ids"]
+            placeholders = ",".join("?" for _ in allowed)
+            with self.connection:
+                rows = self.connection.execute(
+                    f"""SELECT j.id, j.message_row_id FROM analysis_jobs j
+                        JOIN messages m ON m.id = j.message_row_id
+                        WHERE m.chat_id = ? AND m.source_type = 'telegram'
+                          AND (m.sender_id IS NULL OR m.sender_id NOT IN ({placeholders}))
+                          AND j.state IN ('queued', 'retry', 'processing')""",
+                    (chat_id, *allowed),
+                ).fetchall()
+                timestamp = to_iso(now)
+                self.connection.executemany(
+                    """UPDATE messages SET ai_status = 'prefiltered',
+                       prefilter_status = 'filtered',
+                       prefilter_reason_code = 'sender_not_allowed',
+                       prefilter_reason = '该群发送者不在分析白名单中；原文保留',
+                       push_eligible = 0, push_ready_at = NULL,
+                       push_gate_reason = 'prefiltered',
+                       analysis_queue_state = 'succeeded',
+                       analysis_queue_available_at = NULL,
+                       analysis_queue_error_category = NULL,
+                       ai_completed_at = ?,
+                       semantic_dedupe_status = 'not_required_prefilter',
+                       notification_prepare_status = 'not_required_prefilter'
+                       WHERE id = ?""",
+                    [(timestamp, row["message_row_id"]) for row in rows],
+                )
+                self.connection.executemany(
+                    """UPDATE analysis_jobs SET state = 'succeeded',
+                       result_status = 'prefiltered', lease_until = NULL,
+                       error_category = NULL, error_stage = NULL,
+                       updated_at = ?, completed_at = ? WHERE id = ?""",
+                    [(timestamp, timestamp, row["id"]) for row in rows],
+                )
+                self.connection.executemany(
+                    """UPDATE analysis_batch_items
+                       SET state = 'local_terminal', error_category = NULL, updated_at = ?
+                       WHERE job_id = ? AND state IN ('claimed', 'classified', 'retry')""",
+                    [(timestamp, row["id"]) for row in rows],
+                )
+                count += len(rows)
+            batches = self.connection.execute(
+                """SELECT id FROM analysis_batches WHERE chat_id = ?
+                   AND state = 'processing'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM analysis_batch_items i
+                       WHERE i.batch_id = analysis_batches.id
+                         AND i.state IN ('claimed', 'classified', 'retry')
+                   )""",
+                (chat_id,),
+            ).fetchall()
+            for batch in batches:
+                self.finish_analysis_batch(int(batch["id"]), now=now)
+        return count
+
     def insert_message(
         self,
         record: MessageRecord,
@@ -2874,6 +2982,11 @@ class Database:
             if enqueue_analysis
             else PrefilterResult(filtered=False)
         )
+        sender_filter = self.sender_policy_filter(
+            record.chat_id, record.sender_id, record.source_type
+        )
+        if sender_filter.filtered:
+            prequeue_result = sender_filter
         should_enqueue = bool(enqueue_analysis and not prequeue_result.filtered)
         if prequeue_result.filtered and (
             not prequeue_result.reason_code or not prequeue_result.reason
@@ -5291,7 +5404,7 @@ class Database:
             and outcome.confidence is not None
             and int(outcome.confidence) >= COMMUNITY_CONFIDENCE_THRESHOLD
         )
-        score = int(outcome.score or 0)
+        score = self.sender_weighted_score(row_id, int(outcome.score or 0)) if valuable else int(outcome.score or 0)
         requires_dedupe = valuable and score >= PUSH_SCORE_THRESHOLD
         if not succeeded:
             ai_status = "error"
@@ -5418,7 +5531,7 @@ class Database:
             and outcome.confidence is not None
             and int(outcome.confidence) >= BENEFIT_CONFIDENCE_THRESHOLD
         )
-        score = int(outcome.score or 0)
+        score = self.sender_weighted_score(row_id, int(outcome.score or 0)) if valuable else int(outcome.score or 0)
         requires_dedupe = valuable and score >= PUSH_SCORE_THRESHOLD
         if not succeeded:
             ai_status = "error"
@@ -5530,7 +5643,7 @@ class Database:
     ) -> None:
         completed_at = to_iso(now)
         if outcome.status == "success" and outcome.score is not None:
-            effective_score = int(outcome.score)
+            effective_score = self.sender_weighted_score(row_id, int(outcome.score))
             requires_dedupe = bool(
                 outcome.classification_category == "external_information"
                 and effective_score >= PUSH_SCORE_THRESHOLD
