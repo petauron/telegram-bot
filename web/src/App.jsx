@@ -177,6 +177,7 @@ function Dashboard({ username, onUnauthorized, onLogout }) {
     filters.hours,
     filters.pushStatus,
     filters.prefilterStatus,
+    filters.similarStatus,
   ])
 
   const beginRequest = useCallback((name) => {
