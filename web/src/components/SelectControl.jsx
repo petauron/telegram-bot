@@ -7,10 +7,11 @@ const encode = (value) => `option:${String(value ?? '')}`
 
 export function SelectControl({ children, value, onChange, disabled, ...props }) {
   const options = Children.toArray(children).filter(isValidElement)
+  const selected = options.find((option) => encode(option.props.value) === encode(value))
   return (
     <Select.Root value={encode(value)} disabled={disabled} onValueChange={(next) => onChange?.({ target: { value: next.slice(7), type: 'select-one' } })}>
       <Select.Trigger className="app-select-trigger" {...props}>
-        <Select.Value />
+        <Select.Value>{selected?.props.children}</Select.Value>
         <Select.Icon asChild><ChevronDown size={14} aria-hidden="true" /></Select.Icon>
       </Select.Trigger>
       <Select.Portal>
