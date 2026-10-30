@@ -141,7 +141,7 @@ test('message stream group filter only includes chats with stored messages', () 
   const html = renderToStaticMarkup(React.createElement(MessageStreamView, {
     filters: {
       q: '',
-      chatId: '',
+      chatId: '-1001',
       minScore: DEFAULT_MIN_SCORE,
       hours: '24',
       pushStatus: 'all',
