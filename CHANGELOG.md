@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.7](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.6...v0.1.0-alpha.7) (2026-10-30)
+
+
+### Bug Fixes
+
+* **ui:** 统一表单下拉控件 ([113d361](https://github.com/petauron/telegram-bot/commit/113d361f3f3aad60fa827c5f6cc44f2784cd4eb5))
+
 ## [0.1.0-alpha.6](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.5...v0.1.0-alpha.6) (2026-10-20)
 
 
