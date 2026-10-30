@@ -11,6 +11,7 @@
     "qa": "node ../tests/browser_qa.mjs"
   },
   "dependencies": {
+    "@radix-ui/react-select": "^2.4.1",
     "lucide-react": "^0.468.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
