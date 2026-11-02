@@ -75,6 +75,7 @@ from app.push_config import (
     validate_push_secret,
 )
 from app.scoring import reply_bonus
+from app.vps_benefits import has_value_evidence, vendor_key
 from app.semantic_update import validate_semantic_update
 from app.source_context import source_context_payload
 from app.chat_activity import initialize_chat_activity, record_watch_changes
@@ -6082,7 +6083,7 @@ class Database:
         with self.connection:
             row = self.connection.execute(
                 """
-                SELECT id FROM messages
+                SELECT id, chat_id, content_kind, benefit_title, benefit_summary, text FROM messages
                 WHERE chat_id = ? AND message_id = ?
                   AND created_at > COALESCE(
                       (SELECT value FROM metadata WHERE key = 'recovery_delivery_cutoff_at'),
@@ -6099,6 +6100,16 @@ class Database:
             ).fetchone()
             if row is None:
                 return 0
+            message = dict(row)
+            if not has_value_evidence(message):
+                self.connection.execute(
+                    "UPDATE messages SET push_eligible = 0, push_gate_reason = ? WHERE id = ?",
+                    ('vps_value_evidence_missing', int(row['id'])),
+                )
+                return 0
+            vendor = vendor_key(message)
+            batch_key = f"vps-benefit:{message['chat_id']}:{vendor}" if vendor else ''
+            available_at = to_iso(now + timedelta(seconds=120)) if vendor else timestamp
             created = 0
             for channel in channels:
                 cursor = self.connection.execute(
@@ -6106,9 +6117,9 @@ class Database:
                     INSERT OR IGNORE INTO deliveries(
                         message_row_id, channel, delivery_type, batch_key,
                         state, available_at, created_at, updated_at
-                    ) VALUES(?, ?, 'immediate', '', 'queued', ?, ?, ?)
+                    ) VALUES(?, ?, 'immediate', ?, 'queued', ?, ?, ?)
                     """,
-                    (int(row["id"]), channel, timestamp, timestamp, timestamp),
+                    (int(row["id"]), channel, batch_key, available_at, timestamp, timestamp),
                 )
                 created += max(0, cursor.rowcount)
         return created
@@ -6249,7 +6260,52 @@ class Database:
             if first is None:
                 self.connection.commit()
                 return None
-            if (
+            if str(first["delivery_type"]) == "immediate":
+                message = self.connection.execute(
+                    "SELECT id, chat_id, content_kind, benefit_title, benefit_summary, text FROM messages WHERE id = ?",
+                    (int(first["message_row_id"]),),
+                ).fetchone()
+                if message is not None and not has_value_evidence(dict(message)):
+                    self.connection.execute(
+                        "UPDATE messages SET push_eligible = 0, push_gate_reason = ? WHERE id = ?",
+                        ("vps_value_evidence_missing", int(message["id"])),
+                    )
+                    self.connection.execute(
+                        """UPDATE deliveries SET state = 'failed', lease_until = NULL,
+                           error_category = 'vps_value_evidence_missing', updated_at = ?
+                           WHERE message_row_id = ? AND delivery_type = 'immediate'
+                             AND state IN ('queued', 'retry')""",
+                        (timestamp, int(message["id"])),
+                    )
+                    self.connection.commit()
+                    return None
+                # Unsent jobs made before this policy was installed still join a burst.
+                if message is not None and first["state"] == "queued" and not first["batch_key"]:
+                    vendor = vendor_key(dict(message))
+                    if vendor:
+                        self.connection.execute(
+                            """UPDATE deliveries SET batch_key = ?, available_at = ?, updated_at = ?
+                               WHERE message_row_id = ? AND delivery_type = 'immediate'
+                                 AND state = 'queued' AND batch_key = ''""",
+                            (f"vps-benefit:{message['chat_id']}:{vendor}", to_iso(now + timedelta(seconds=120)),
+                             timestamp, int(message["id"])),
+                        )
+                        self.connection.commit()
+                        return None
+            if str(first["batch_key"]).startswith("vps-benefit:"):
+                first_created = datetime.fromisoformat(str(first["created_at"]).replace("Z", "+00:00"))
+                window_end = to_iso(first_created + timedelta(seconds=120))
+                rows = self.connection.execute(
+                    """
+                    SELECT * FROM deliveries
+                    WHERE channel = ? AND delivery_type = 'immediate' AND batch_key = ?
+                      AND created_at >= ? AND created_at <= ? AND (state = 'queued' OR
+                          (state = 'retry' AND available_at <= ?))
+                    ORDER BY id
+                    """,
+                    (str(first['channel']), str(first['batch_key']), str(first['created_at']), window_end, timestamp),
+                ).fetchall()
+            elif (
                 str(first["delivery_type"]) == "digest"
                 and str(first["channel"]) == "telegram"
             ):
