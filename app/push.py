@@ -791,6 +791,25 @@ class PushDispatcher:
         materialized_rows = tuple(self._with_source_context(row) for row in rows)
         if not materialized_rows:
             return True
+        if delivery_type == "immediate" and len(materialized_rows) > 1:
+            first = materialized_rows[0]
+            lines = []
+            used_bytes = 0
+            for index, item in enumerate(materialized_rows):
+                title = _truncate_utf8(_notification_title_value(item), 100)
+                detail = _truncate_utf8(_notification_body_value(item), 200)
+                line = f"{title}：{detail}"
+                size = len(line.encode("utf-8")) + 1
+                if used_bytes + size > 2_200:
+                    lines.append(f"另有 {len(materialized_rows) - index} 条，请在消息流查看原文。")
+                    break
+                lines.append(line)
+                used_bytes += size
+            materialized_rows = ({
+                **first,
+                "notification_title": f"{_notification_title_value(first).split(' ', 1)[0]} VPS 优惠（{len(materialized_rows)} 条）",
+                "notification_body": "\n".join(lines),
+            },)
         if channel_name not in {"telegram", "ntfy"}:
             raise ValueError("未知推送渠道")
         if delivery_type not in {"immediate", "digest"}:
