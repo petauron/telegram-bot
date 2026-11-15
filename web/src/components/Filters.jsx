@@ -1,10 +1,11 @@
+import { SelectControl } from './SelectControl'
 import { useState } from 'react'
-import { ChevronDown, Filter, Search, X } from './Icons'
+import { Filter, Search, X } from './Icons'
 
 export const DEFAULT_MIN_SCORE = '60'
 
 function SelectWrap({ children, className = '' }) {
-  return <span className={`select-wrap ${className}`.trim()}>{children}<ChevronDown size={14} aria-hidden="true" /></span>
+  return <span className={`select-wrap ${className}`.trim()}>{children}</span>
 }
 
 export function activeAdvancedFilterCount(filters) {
@@ -42,18 +43,18 @@ export function Filters({ filters, chats, total, onChange }) {
           />
         </label>
         <SelectWrap className="chat-filter">
-          <select value={filters.chatId} onChange={update('chatId')} aria-label="来源筛选">
+          <SelectControl value={filters.chatId} onChange={update('chatId')} aria-label="来源筛选">
             <option value="">全部来源</option>
             {chats.map((chat) => <option value={chat.chat_id} key={chat.chat_id}>{chat.chat_name}</option>)}
-          </select>
+          </SelectControl>
         </SelectWrap>
         <SelectWrap className="time-filter">
-          <select value={filters.hours} onChange={update('hours')} aria-label="时间范围">
+          <SelectControl value={filters.hours} onChange={update('hours')} aria-label="时间范围">
             <option value="1">最近 1 小时</option>
             <option value="6">最近 6 小时</option>
             <option value="24">最近 24 小时</option>
             <option value="72">最近 3 天</option>
-          </select>
+          </SelectControl>
         </SelectWrap>
         <button
           className={`advanced-filter-trigger ${advancedOpen ? 'active' : ''}`}
@@ -72,45 +73,45 @@ export function Filters({ filters, chats, total, onChange }) {
           <label>
             <span>最低评分</span>
             <SelectWrap>
-              <select value={filters.minScore} onChange={update('minScore')} aria-label="最低评分">
+              <SelectControl value={filters.minScore} onChange={update('minScore')} aria-label="最低评分">
                 <option value="0">不限</option>
                 <option value="20">20 分以上</option>
                 <option value="50">50 分以上</option>
                 <option value="60">60 分以上（默认）</option>
                 <option value="80">80 分以上</option>
                 <option value="100">100 分</option>
-              </select>
+              </SelectControl>
             </SelectWrap>
           </label>
           <label>
             <span>推送状态</span>
             <SelectWrap>
-              <select value={filters.pushStatus} onChange={update('pushStatus')} aria-label="推送状态">
+              <SelectControl value={filters.pushStatus} onChange={update('pushStatus')} aria-label="推送状态">
                 <option value="all">全部状态</option>
                 <option value="immediate">即时已推送</option>
                 <option value="digest">历史摘要已推送</option>
                 <option value="not_pushed">未推送</option>
-              </select>
+              </SelectControl>
             </SelectWrap>
           </label>
           <label>
             <span>前置过滤</span>
             <SelectWrap>
-              <select value={filters.prefilterStatus} onChange={update('prefilterStatus')} aria-label="前置过滤状态">
+              <SelectControl value={filters.prefilterStatus} onChange={update('prefilterStatus')} aria-label="前置过滤状态">
                 <option value="exclude">隐藏已过滤</option>
                 <option value="all">全部前置状态</option>
                 <option value="filtered">仅看已过滤</option>
-              </select>
+              </SelectControl>
             </SelectWrap>
           </label>
           <label>
             <span>相似资讯</span>
             <SelectWrap>
-              <select value={filters.similarStatus || 'exclude'} onChange={update('similarStatus')} aria-label="相似资讯状态">
+              <SelectControl value={filters.similarStatus || 'exclude'} onChange={update('similarStatus')} aria-label="相似资讯状态">
                 <option value="exclude">隐藏重复（默认）</option>
                 <option value="all">显示全部</option>
                 <option value="suppressed">仅看已抑制重复</option>
-              </select>
+              </SelectControl>
             </SelectWrap>
           </label>
           <button className="clear-filters" type="button" onClick={resetAdvanced} disabled={!activeCount}>

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.0-alpha.7](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.6...v0.1.0-alpha.7) (2026-11-02)
+
+
+### Bug Fixes
+
+* **ui:** 统一表单下拉控件 ([113d361](https://github.com/petauron/telegram-bot/commit/113d361f3f3aad60fa827c5f6cc44f2784cd4eb5))
+* 筛选 VPS 优惠并合并同商家通知 ([c8862a9](https://github.com/petauron/telegram-bot/commit/c8862a9d92d4d18233e01dd7404cfa96069f4420))
+
+## [0.1.0-alpha.6](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.5...v0.1.0-alpha.6) (2026-10-20)
+
+
+### Bug Fixes
+
+* classify verified service sender announcements before weighting ([#11](https://github.com/petauron/telegram-bot/issues/11)) ([e889d5a](https://github.com/petauron/telegram-bot/commit/e889d5a3cbade659c3b702d11b5a9c9645623a77))
+
+## [0.1.0-alpha.5](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.4...v0.1.0-alpha.5) (2026-10-20)
+
+
+### Features
+
+* add per-chat sender allowlists and weighted analysis ([#10](https://github.com/petauron/telegram-bot/issues/10)) ([cafb055](https://github.com/petauron/telegram-bot/commit/cafb055e84991226d55a8b1f3039da602566254c))
+
+
+### Bug Fixes
+
+* match source CodeQL checks during release recovery ([#7](https://github.com/petauron/telegram-bot/issues/7)) ([29e48a2](https://github.com/petauron/telegram-bot/commit/29e48a2d3bd37489d5fe6ed08d1888941c77b4b4))
+* verify and recover checked draft releases ([#6](https://github.com/petauron/telegram-bot/issues/6)) ([3797bec](https://github.com/petauron/telegram-bot/commit/3797bec99c9bcb0eb910e79acf0ca482611bbcee))
+
 ## [0.1.0-alpha.4](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.3...v0.1.0-alpha.4) (2026-10-12)
 
 

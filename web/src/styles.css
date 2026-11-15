@@ -926,3 +926,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* Shared accessible select, including the filter toolbar and settings forms. */
+.app-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: var(--control-height); padding: 9px 12px; border: 1px solid #c7d3e2; border-radius: 7px; background: #fff; color: var(--text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.app-select-trigger:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.app-select-trigger:disabled { cursor: not-allowed; opacity: .55; }
+.select-wrap .app-select-trigger { height: 100%; min-height: 0; border: 0; background: transparent; }
+.app-select-content { z-index: 1000; min-width: var(--radix-select-trigger-width); max-height: min(20rem, var(--radix-select-content-available-height)); overflow-y: auto; padding: 4px; border: 1px solid #c7d3e2; border-radius: 7px; background: #fff; color: var(--text); box-shadow: 0 8px 24px rgb(15 23 42 / 15%); }
+.app-select-item { position: relative; display: flex; align-items: center; min-height: 36px; padding: 6px 32px 6px 10px; border-radius: 5px; font-size: 12px; outline: none; cursor: default; }
+.app-select-item[data-highlighted] { background: #edf4ff; }
+.app-select-item[data-disabled] { opacity: .5; }
+.app-select-indicator { position: absolute; right: 10px; display: flex; }
+
+/* Keep native form semantics while matching the application's controls. */
+input[type="checkbox"] { appearance: none; display: inline-grid; place-content: center; flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; padding: 0; border: 1px solid #a9b9cd; border-radius: 4px; background: #fff; vertical-align: middle; }
+input[type="checkbox"]:checked { border-color: #2563eb; background: #2563eb; }
+input[type="checkbox"]:checked::before { content: ''; width: 11px; height: 11px; background: #fff; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12l4 4L19 6' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+input[type="checkbox"]:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+@media (forced-colors: active) { input[type="checkbox"] { appearance: auto; } input[type="checkbox"]::before { display: none; } }
