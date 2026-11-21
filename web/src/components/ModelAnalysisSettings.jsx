@@ -1,3 +1,4 @@
+import { SelectControl } from './SelectControl'
 import { CheckCircle2, LockKeyhole, RefreshCw, Save } from './Icons'
 
 const STATUS_LABELS = {
@@ -31,12 +32,12 @@ export function isModelConfigDirty(form, config) {
 
 function EffortSelect({ value, onChange, label }) {
   return (
-    <select value={value} onChange={onChange} aria-label={label}>
+    <SelectControl value={value} onChange={onChange} aria-label={label}>
       <option value="default">模型默认</option>
       <option value="low">低</option>
       <option value="medium">中</option>
       <option value="high">高</option>
-    </select>
+    </SelectControl>
   )
 }
 
@@ -133,25 +134,25 @@ export function ModelAnalysisSettings({
         <h4>四阶段模型配置</h4>
         <div className="stage-row">
           <div className="stage-intro"><strong>分类阶段</strong><small>先判断是否为外部资讯</small></div>
-          <label className="field"><span>模型</span><select value={form.classificationModel} onChange={update('classificationModel')} aria-label="分类分析模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
+          <label className="field"><span>模型</span><SelectControl value={form.classificationModel} onChange={update('classificationModel')} aria-label="分类分析模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</SelectControl></label>
           <label className="field effort-field"><span>推理档位</span><EffortSelect value={form.classificationReasoningEffort} onChange={update('classificationReasoningEffort')} label="分类分析推理档位" /></label>
           <p>默认低推理；非资讯在此结束。</p>
         </div>
         <div className="stage-row">
           <div className="stage-intro"><strong>评分阶段</strong><small>仅外部资讯进入评分</small></div>
-          <label className="field"><span>模型</span><select value={form.model} onChange={update('model')} aria-label="评分分析模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
+          <label className="field"><span>模型</span><SelectControl value={form.model} onChange={update('model')} aria-label="评分分析模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</SelectControl></label>
           <label className="field effort-field"><span>推理档位</span><EffortSelect value={form.reasoningEffort} onChange={update('reasoningEffort')} label="评分分析推理档位" /></label>
           <p>AI 分是唯一推送判断分数。</p>
         </div>
         <div className="stage-row">
           <div className="stage-intro"><strong>语义去重</strong><small>仅比较达到 60 分推送线的资讯</small></div>
-          <label className="field"><span>模型</span><select value={form.semanticDedupeModel} onChange={update('semanticDedupeModel')} aria-label="语义去重模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
+          <label className="field"><span>模型</span><SelectControl value={form.semanticDedupeModel} onChange={update('semanticDedupeModel')} aria-label="语义去重模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</SelectControl></label>
           <label className="field effort-field"><span>推理档位</span><EffortSelect value={form.semanticDedupeReasoningEffort} onChange={update('semanticDedupeReasoningEffort')} label="语义去重推理档位" /></label>
           <p>跨来源比较会增加一次调用；更高档位可能增加时延和费用。</p>
         </div>
         <div className="stage-row">
           <div className="stage-intro"><strong>通知内容整理</strong><small>只整理最终放行的资讯</small></div>
-          <label className="field"><span>模型</span><select value={form.notificationModel} onChange={update('notificationModel')} aria-label="通知内容整理模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</select></label>
+          <label className="field"><span>模型</span><SelectControl value={form.notificationModel} onChange={update('notificationModel')} aria-label="通知内容整理模型选择"><option value="">请先刷新模型</option>{availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</SelectControl></label>
           <label className="field effort-field"><span>推理档位</span><EffortSelect value={form.notificationReasoningEffort} onChange={update('notificationReasoningEffort')} label="通知内容整理推理档位" /></label>
           <p>输出冻结后由所有渠道复用；失败会安全回退，不阻塞通知。</p>
         </div>

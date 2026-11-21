@@ -1,3 +1,4 @@
+import { SelectControl } from './SelectControl'
 import { useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Clock3, ExternalLink, RefreshCw, Rss, Save, X } from './Icons'
 import { PageHeading } from './PageHeading'
@@ -311,7 +312,7 @@ export function InformationSourcesView({
           </div>
           <label className="field-stack">
             <span>来源类型</span>
-            <select value={form.kind} onChange={change('kind')} disabled={Boolean(editingId)}>
+            <SelectControl value={form.kind} onChange={change('kind')} disabled={Boolean(editingId)}>
               <option value="rss">RSS / Atom</option>
               <option value="github_releases">GitHub Releases</option>
               <option value="github_advisories">GitHub Security Advisories</option>
@@ -322,7 +323,7 @@ export function InformationSourcesView({
               <option value="bluesky">Bluesky 可信账号</option>
               <option value="mastodon">Mastodon 可信来源</option>
               <option value="newsletter_imap">邮件 Newsletter</option>
-            </select>
+            </SelectControl>
             {editingId ? <small>类型不可直接切换；如需更换类型请新增来源。</small> : null}
           </label>
           <label className="field-stack">
@@ -344,21 +345,21 @@ export function InformationSourcesView({
             <div className="source-settings-group">
               <label className="field-stack">
                 <span>最低严重度</span>
-                <select value={form.minimumSeverity} onChange={change('minimumSeverity')}>
+                <SelectControl value={form.minimumSeverity} onChange={change('minimumSeverity')}>
                   <option value="high">High + Critical</option>
                   <option value="critical">仅 Critical</option>
-                </select>
+                </SelectControl>
               </label>
               <label className="field-stack">
                 <span>Ecosystem</span>
-                <select value={form.ecosystem} onChange={change('ecosystem')}>
+                <SelectControl value={form.ecosystem} onChange={change('ecosystem')}>
                   <option value="">全部</option>
                   <option value="npm">npm</option><option value="pip">pip</option>
                   <option value="go">Go</option><option value="maven">Maven</option>
                   <option value="rust">Rust</option><option value="rubygems">RubyGems</option>
                   <option value="composer">Composer</option><option value="nuget">NuGet</option>
                   <option value="actions">GitHub Actions</option><option value="swift">Swift</option>
-                </select>
+                </SelectControl>
               </label>
               <label className="field-stack">
                 <span>关注产品关键词</span>
@@ -387,9 +388,9 @@ export function InformationSourcesView({
               <p className="source-note">读取官方 Top/Best story，不读取评论；本地热度与主题筛选通过后才进入模型管线。</p>
               <label className="field-stack">
                 <span>榜单</span>
-                <select value={form.storyList} onChange={change('storyList')}>
+                <SelectControl value={form.storyList} onChange={change('storyList')}>
                   <option value="best">Best</option><option value="top">Top</option><option value="both">Top + Best</option>
-                </select>
+                </SelectControl>
               </label>
               <label className="field-stack">
                 <span>最低热度</span>
@@ -420,9 +421,9 @@ export function InformationSourcesView({
               </label>
               <label className="field-stack">
                 <span>来源范围</span>
-                <select value={form.mastodonTimelineType} onChange={change('mastodonTimelineType')}>
+                <SelectControl value={form.mastodonTimelineType} onChange={change('mastodonTimelineType')}>
                   <option value="account">可信账号</option><option value="tag">精确标签</option>
-                </select>
+                </SelectControl>
               </label>
               <label className="field-stack">
                 <span>{form.mastodonTimelineType === 'tag' ? '标签' : '账号'}</span>
@@ -453,14 +454,14 @@ export function InformationSourcesView({
           ) : null}
           <label className="field-stack">
             <span>采集间隔</span>
-            <select value={form.pollIntervalMinutes} onChange={change('pollIntervalMinutes')}>
+            <SelectControl value={form.pollIntervalMinutes} onChange={change('pollIntervalMinutes')}>
               <option value="5">每 5 分钟</option>
               <option value="15">每 15 分钟</option>
               <option value="30">每 30 分钟</option>
               <option value="60">每 1 小时</option>
               <option value="180">每 3 小时</option>
               <option value="720">每 12 小时</option>
-            </select>
+            </SelectControl>
           </label>
           <label className="switch-line">
             <input type="checkbox" checked={form.enabled} onChange={change('enabled')} />

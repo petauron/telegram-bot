@@ -3,6 +3,9 @@
 Petauron application for collecting Telegram and other feeds, classifying
 messages, and managing notification delivery through a web dashboard.
 
+For an operator-configured group sender allowlist and score bonus, see
+[sender policies](docs/sender-policy.md).
+
 ## Deployment
 
 Images are built only by GitHub Actions for Linux AMD64 and ARM64. Use the exact

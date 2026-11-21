@@ -1145,6 +1145,10 @@ def classification_system_prompt(*, batched: bool = False) -> str:
         "补充待分类消息未表达的事实。"
     )
     base += SOURCE_CONTEXT_INSTRUCTIONS
+    base += (
+        "已核实 service_announcer 自身明确发布的售卖安排、放货或调价公告归 external_information，"
+        "优先于上面的普通补货福利或群聊规则，交由评分判断价值；不因身份把闲聊升级为公告。"
+    )
     if not batched:
         return (
             base
@@ -1932,8 +1936,12 @@ class OpenAICompatibleClient:
             "期限的折扣；coupon_credit=优惠码、兑换码、代金券或账户额度；free_trial=免费试用；"
             "giveaway=规则明确的公开赠送；price_drop=可核对的新降价；product_restock=明确命名的"
             "技术产品、云服务、VPS 套餐或稀缺资源恢复库存/下单；none=不值得通知。"
-            "商品补货不要求同时存在折扣：如果正文明确给出厂商/产品/地区或系列，并肯定陈述已补货、"
-            "恢复下单或重新上架，可以 valuable=true。询问何时补货、求购/转售、存档价格、只有产品名、"
+            "非 VPS 的商品补货不要求同时存在折扣，仍依现有补货标准判断。"
+            "VPS/云服务器补货不等于福利：必须有正文可核对的明确优惠（具体折扣幅度或金额及价格），"
+            "或同配置/历史价格的具体数字比较支持明显高性价比，才可 valuable=true；仅有普通价格、"
+            "库存、带宽达标或自称低价/特价而无比较依据均不足，证据缺失不猜测。"
+            "有明确具体优惠的 VPS 标题应以正文可核对的商家名开头，后接空格和套餐名称。"
+            "询问何时补货、求购/转售、存档价格、只有产品名、"
             "传闻猜测或没有明确恢复动作的消息必须 false。附带返佣参数或推广链接既不能证明补货，"
             "也不能推翻正文中独立、明确的补货事实；只忽略链接中的推广信息并根据正文判断。"
             "返佣本身、邀请拉人、代理招募、博彩、刷单、私下转账、疑似诈骗、模糊广告、普通长期促销、"
@@ -2352,6 +2360,12 @@ async def analyze_persisted_message(
     manual: bool = False,
     semantic_gate: Any | None = None,
 ) -> dict[str, Any]:
+    sender_filter = database.sender_policy_filter(
+        int(row["chat_id"]), row.get("sender_id"), str(row.get("source_type") or "telegram")
+    )
+    if sender_filter.filtered:
+        database.record_prefilter_result(int(row["id"]), result=sender_filter, now=now)
+        return database.get_message_by_id(int(row["id"]))
     if not manual and row.get("notification_prepare_status") == "preparing":
         from app.notification_prepare import deterministic_notification_fallback
 
@@ -2386,6 +2400,8 @@ async def analyze_persisted_message(
     protected_keywords = (
         tuple(runtime.get("important_keywords") or ()) if runtime is not None else ()
     )
+    if database.message_source_context(int(row["id"])).get("verified_sender_role") == "service_announcer":
+        protected_keywords += ("放货", "补货", "调价", "涨价", "降价", "开售", "售罄", "库存")
     prefilter = evaluate_prefilter(
         str(row.get("text") or ""),
         is_service_message=bool(row.get("is_service_message")),
@@ -2850,6 +2866,12 @@ def preflight_persisted_message_for_batch(
     now: datetime,
 ) -> BatchPreflightResult:
     """Run every safe/contextual local gate before a live batch LLM request."""
+    sender_filter = database.sender_policy_filter(
+        int(row["chat_id"]), row.get("sender_id"), str(row.get("source_type") or "telegram")
+    )
+    if sender_filter.filtered:
+        database.record_prefilter_result(int(row["id"]), result=sender_filter, now=now)
+        return BatchPreflightResult(ready=False)
     if row.get("notification_prepare_status") == "preparing":
         from app.notification_prepare import deterministic_notification_fallback
 
@@ -2882,6 +2904,8 @@ def preflight_persisted_message_for_batch(
     protected_keywords = (
         tuple(runtime.get("important_keywords") or ()) if runtime is not None else ()
     )
+    if database.message_source_context(int(row["id"])).get("verified_sender_role") == "service_announcer":
+        protected_keywords += ("放货", "补货", "调价", "涨价", "降价", "开售", "售罄", "库存")
     prefilter = evaluate_prefilter(
         str(row.get("text") or ""),
         is_service_message=bool(row.get("is_service_message")),
