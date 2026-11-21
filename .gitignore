@@ -23,3 +23,7 @@ backups/
 *.key
 backups/
 exports/
+
+/tasks/
+/archive/
+/workspaces/

@@ -253,8 +253,9 @@ def _local_name(tag: str) -> str:
 
 def _first_text(element: Any, names: tuple[str, ...]) -> str:
     wanted = frozenset(name.casefold() for name in names)
-    for child in element.iter():
-        if child is element or _local_name(str(child.tag)) not in wanted:
+    # Nested Atom source metadata describes the feed, not this entry.
+    for child in element:
+        if _local_name(str(child.tag)) not in wanted:
             continue
         value = "".join(child.itertext()).strip()
         if value:
@@ -263,7 +264,7 @@ def _first_text(element: Any, names: tuple[str, ...]) -> str:
 
 
 def _entry_link(element: Any) -> str | None:
-    for child in element.iter():
+    for child in element:
         if _local_name(str(child.tag)) != "link":
             continue
         href = str(child.attrib.get("href") or "").strip()
