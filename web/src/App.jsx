@@ -669,6 +669,11 @@ function Dashboard({ username, onUnauthorized, onLogout }) {
     }
   }, [beginRequest, handleRequestError])
 
+  const closeMessage = useCallback(() => {
+    selectionRequest.current += 1
+    setSelected(null)
+  }, [])
+
   const selectMessage = useCallback(async (row) => {
     const requestId = selectionRequest.current + 1
     selectionRequest.current = requestId
@@ -677,19 +682,21 @@ function Dashboard({ username, onUnauthorized, onLogout }) {
       const detail = await api(`/api/messages/${row.id}`)
       if (selectionRequest.current === requestId) setSelected(detail)
     } catch (error) {
-      handleRequestError(error)
+      if (selectionRequest.current === requestId) handleRequestError(error)
     }
   }, [handleRequestError])
 
   const reanalyzeMessage = useCallback(async () => {
     if (!selected || analyzing) return
+    const requestId = selectionRequest.current + 1
+    selectionRequest.current = requestId
     setAnalyzing(true)
     try {
       const detail = await api(`/api/messages/${selected.id}/reanalyze`, {
         method: 'POST',
         body: JSON.stringify({}),
       })
-      setSelected(detail)
+      if (selectionRequest.current === requestId) setSelected(detail)
       setRows((current) => current.map((row) => (row.id === detail.id ? { ...row, ...detail } : row)))
       setOverviewRows((current) => current.map((row) => (row.id === detail.id ? { ...row, ...detail } : row)))
       setToast({
@@ -730,8 +737,8 @@ function Dashboard({ username, onUnauthorized, onLogout }) {
 
   const navigate = useCallback((destination) => {
     setActive(destination)
-    if (destination === 'messages') setSelected(null)
-  }, [])
+    closeMessage()
+  }, [closeMessage])
 
   return (
     <div className={`app-shell ${active === 'messages' && selected ? 'detail-open' : ''}`}>
@@ -815,7 +822,7 @@ function Dashboard({ username, onUnauthorized, onLogout }) {
             loading={loading}
             onReanalyze={reanalyzeMessage}
             analyzing={analyzing}
-            onCloseDetail={() => setSelected(null)}
+            onCloseDetail={closeMessage}
           />
         ) : null}
       </div>
