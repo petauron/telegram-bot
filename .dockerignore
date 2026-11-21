@@ -18,3 +18,9 @@ app/web_static
 *.key
 backups/
 exports/
+
+# Local task records and non-build material
+tasks/
+archive/
+workspaces/
+docs/
