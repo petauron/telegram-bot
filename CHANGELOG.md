@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0-alpha.8](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.7...v0.1.0-alpha.8) (2026-11-21)
+
+
+### Bug Fixes
+
+* **feeds:** avoid inheriting nested source metadata in entry elements ([#25](https://github.com/petauron/telegram-bot/issues/25)) ([b7dee36](https://github.com/petauron/telegram-bot/commit/b7dee364c38d89a0de72138fd10a36e1dca77751)), closes [#22](https://github.com/petauron/telegram-bot/issues/22)
+* **web:** prevent stale async detail loads from reopening closed panels ([#24](https://github.com/petauron/telegram-bot/issues/24)) ([8227f2d](https://github.com/petauron/telegram-bot/commit/8227f2d410ee130d4c625c20fb65eb6970624bbc)), closes [#21](https://github.com/petauron/telegram-bot/issues/21)
+* **web:** reset message page when similarity filter changes ([d10fb12](https://github.com/petauron/telegram-bot/commit/d10fb127b177f29618d56e3a4fe9de351ebfdf5c))
+
 ## [0.1.0-alpha.7](https://github.com/petauron/telegram-bot/compare/v0.1.0-alpha.6...v0.1.0-alpha.7) (2026-11-02)
 
 
