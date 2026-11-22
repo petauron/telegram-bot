@@ -7,29 +7,103 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   check:
     name: Application checks
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Determine CI scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -eu
+          is_docs_only() {
+            files="$1"
+            [ -n "$files" ] || return 1
+            old_ifs=$IFS
+            nl=$(printf '\nx'); nl=${nl%x}; IFS=$nl
+            for path in $files; do
+              [ -n "$path" ] || continue
+              case "$path" in
+                LICENSE*|NOTICE*|*THIRD_PARTY*|*LICENSES*) IFS=$old_ifs; return 1 ;;
+                *.md|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md) ;;
+                *) IFS=$old_ifs; return 1 ;;
+              esac
+            done
+            IFS=$old_ifs
+            return 0
+          }
+          run_ci=true
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; then
+            changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+            if is_docs_only "$changed"; then
+              run_ci=false
+            fi
+          elif [ "$EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")
+            must_run_main=false
+            old_ifs=$IFS
+            nl=$(printf '\nx'); nl=${nl%x}; IFS=$nl
+            for path in $changed; do
+              case "$path" in
+                .release-please-manifest.json) must_run_main=true ;;
+              esac
+            done
+            IFS=$old_ifs
+            if [ "$must_run_main" = "false" ]; then
+              if is_docs_only "$changed"; then
+                run_ci=false
+              else
+                main_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+                pr_head=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null and .merge_commit_sha == "'"$GITHUB_SHA"'" and .base.ref == "main" and .head.repo.full_name == "'"$GITHUB_REPOSITORY"'")] | if length == 1 then .[0].head.sha else empty end' 2>/dev/null || true)
+                if [ -n "$pr_head" ]; then
+                  pr_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$pr_head" --jq '.tree.sha // empty' 2>/dev/null || true)
+                  pr_ci=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$pr_head&per_page=100" --jq '.workflow_runs | sort_by(.run_number) | last | if . != null and .head_sha == "'"$pr_head"'" and .head_repository.full_name == "'"$GITHUB_REPOSITORY"'" and .status == "completed" and .conclusion == "success" then "ok" else empty end' 2>/dev/null || true)
+                  if [ "$pr_tree" = "$main_tree" ] && [ "$pr_ci" = "ok" ]; then
+                    run_ci=false
+                  fi
+                fi
+              fi
+            fi
+          fi
+          echo "run_ci=$run_ci" >> "$GITHUB_OUTPUT"
+      - if: steps.scope.outputs.run_ci == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - if: steps.scope.outputs.run_ci == 'true'
+        run: pip install -r requirements.txt
+      - if: steps.scope.outputs.run_ci == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - if: steps.scope.outputs.run_ci == 'true'
+        run: npm ci
         working-directory: web
-      - run: npm test
+      - if: steps.scope.outputs.run_ci == 'true'
+        run: npm test
         working-directory: web
-      - run: npm run build
+      - if: steps.scope.outputs.run_ci == 'true'
+        run: npm run build
         working-directory: web
-      - run: python -m unittest discover -s tests
+      - if: steps.scope.outputs.run_ci == 'true'
+        run: python -m unittest discover -s tests
