@@ -33,77 +33,156 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -eu
-          is_docs_only() {
-            files="$1"
-            [ -n "$files" ] || return 1
-            old_ifs=$IFS
-            nl=$(printf '\nx'); nl=${nl%x}; IFS=$nl
-            for path in $files; do
-              [ -n "$path" ] || continue
-              case "$path" in
-                LICENSE*|NOTICE*|*THIRD_PARTY*|*LICENSES*) IFS=$old_ifs; return 1 ;;
-                *.md|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md) ;;
-                *) IFS=$old_ifs; return 1 ;;
-              esac
-            done
-            IFS=$old_ifs
-            return 0
-          }
-          run_ci=true
-          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; then
-            changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-            if is_docs_only "$changed"; then
-              run_ci=false
+          python=true
+          web=true
+          release_metadata=false
+          must_run_main=true
+          scope_reason='full-default'
+
+          apply_classification() {
+            if cls="$(sh scripts/classify-ci-changes.sh --git "$1" "$2")"; then
+              python="$(printf '%s\n' "$cls" | awk -F= '$1 == "python" { print $2 }')"
+              web="$(printf '%s\n' "$cls" | awk -F= '$1 == "web" { print $2 }')"
+              release_metadata="$(printf '%s\n' "$cls" | awk -F= '$1 == "release_metadata" { print $2 }')"
+              must_run_main="$(printf '%s\n' "$cls" | awk -F= '$1 == "must_run_main" { print $2 }')"
+              if { [ "$python" != 'true' ] && [ "$python" != 'false' ]; } || \
+                 { [ "$web" != 'true' ] && [ "$web" != 'false' ]; } || \
+                 { [ "$release_metadata" != 'true' ] && [ "$release_metadata" != 'false' ]; } || \
+                 { [ "$must_run_main" != 'true' ] && [ "$must_run_main" != 'false' ]; }; then
+                python=true; web=true; release_metadata=false; must_run_main=true
+                scope_reason='classifier-parse-fallback'
+                return 1
+              fi
+              return 0
             fi
-          elif [ "$EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
-            changed=$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")
-            must_run_main=false
-            old_ifs=$IFS
-            nl=$(printf '\nx'); nl=${nl%x}; IFS=$nl
-            for path in $changed; do
-              case "$path" in
-                .release-please-manifest.json) must_run_main=true ;;
-              esac
-            done
-            IFS=$old_ifs
-            if [ "$must_run_main" = "false" ]; then
-              if is_docs_only "$changed"; then
-                run_ci=false
-              else
-                main_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
-                pr_head=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null and .merge_commit_sha == "'"$GITHUB_SHA"'" and .base.ref == "main" and .head.repo.full_name == "'"$GITHUB_REPOSITORY"'")] | if length == 1 then .[0].head.sha else empty end' 2>/dev/null || true)
+            python=true; web=true; release_metadata=false; must_run_main=true
+            scope_reason='classifier-exit-fallback'
+            return 1
+          }
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] && \
+             git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null && \
+             git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            if apply_classification "$BASE_SHA" "$HEAD_SHA"; then
+              scope_reason='pull-request-diff'
+            fi
+          elif [ "$EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] && \
+               [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && \
+               git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            if apply_classification "$BEFORE_SHA" "$GITHUB_SHA"; then
+              scope_reason='main-push-diff'
+              if [ "$must_run_main" = "false" ] && { [ "$python" = "true" ] || [ "$web" = "true" ]; }; then
+                main_tree="$(git rev-parse "${GITHUB_SHA}^{tree}")"
+                pr_head="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null and .merge_commit_sha == "'"$GITHUB_SHA"'" and .base.ref == "main" and .head.repo.full_name == "'"$GITHUB_REPOSITORY"'")] | if length == 1 then .[0].head.sha else empty end' 2>/dev/null || true)"
                 if [ -n "$pr_head" ]; then
-                  pr_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$pr_head" --jq '.tree.sha // empty' 2>/dev/null || true)
-                  pr_ci=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$pr_head&per_page=100" --jq '.workflow_runs | sort_by(.run_number) | last | if . != null and .head_sha == "'"$pr_head"'" and .head_repository.full_name == "'"$GITHUB_REPOSITORY"'" and .status == "completed" and .conclusion == "success" then "ok" else empty end' 2>/dev/null || true)
+                  pr_tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$pr_head" --jq '.tree.sha // empty' 2>/dev/null || true)"
+                  pr_ci="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$pr_head&per_page=100" --jq '.workflow_runs | sort_by(.run_number) | last | if . != null and .head_sha == "'"$pr_head"'" and .head_repository.full_name == "'"$GITHUB_REPOSITORY"'" and .status == "completed" and .conclusion == "success" then "ok" else empty end' 2>/dev/null || true)"
                   if [ "$pr_tree" = "$main_tree" ] && [ "$pr_ci" = "ok" ]; then
-                    run_ci=false
+                    python=false
+                    web=false
+                    scope_reason='verified-pr-tree'
                   fi
                 fi
               fi
             fi
           fi
-          echo "run_ci=$run_ci" >> "$GITHUB_OUTPUT"
-      - if: steps.scope.outputs.run_ci == 'true'
+
+          echo "Scope ($scope_reason): python=$python web=$web release_metadata=$release_metadata must_run_main=$must_run_main"
+          echo "python=$python" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "release_metadata=$release_metadata" >> "$GITHUB_OUTPUT"
+      - name: Verify release metadata
+        if: steps.scope.outputs.release_metadata == 'true'
+        run: |
+          set -eu
+          manifest_version="$(jq -ser '
+            if length == 1
+               and (.[0] | type == "object" and length == 1)
+               and (.[0]["."] | type == "string")
+               and (.[0]["."] | (contains("\n") | not) and (contains("\r") | not))
+               and (.[0]["."] | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?\\z"))
+            then .[0]["."]
+            else error("invalid manifest version")
+            end
+          ' .release-please-manifest.json)"
+          printf '%s\n' "$manifest_version" > "$RUNNER_TEMP/expected-version-nl"
+          printf '%s' "$manifest_version" > "$RUNNER_TEMP/expected-version-raw"
+          cmp -s VERSION "$RUNNER_TEMP/expected-version-nl" || cmp -s VERSION "$RUNNER_TEMP/expected-version-raw"
+          jq -er '.packages["."]["version-file"] == "VERSION"' release-please-config.json >/dev/null
+          grep -Fq "## [$manifest_version](" CHANGELOG.md
+      - name: Cache built web static assets
+        id: web_static_cache
+        if: steps.scope.outputs.python == 'true' || steps.scope.outputs.web == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: app/web_static
+          key: web-static-${{ runner.os }}-${{ hashFiles('web/**', '!web/node_modules/**') }}
+      - if: steps.scope.outputs.python == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
           python-version: '3.12'
           cache: pip
-      - if: steps.scope.outputs.run_ci == 'true'
-        run: pip install -r requirements.txt
-      - if: steps.scope.outputs.run_ci == 'true'
+      - if: steps.scope.outputs.web == 'true' || (steps.scope.outputs.python == 'true' && steps.web_static_cache.outputs.cache-hit != 'true')
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - if: steps.scope.outputs.run_ci == 'true'
-        run: npm ci
+      - name: Install dependencies and build web assets
+        if: steps.scope.outputs.python == 'true' && (steps.scope.outputs.web == 'true' || steps.web_static_cache.outputs.cache-hit != 'true')
+        env:
+          RUN_WEB_TESTS: ${{ steps.scope.outputs.web }}
+        run: |
+          set -eu
+          web_log="$RUNNER_TEMP/web-ci.log"
+          (
+            set -eu
+            cd web
+            npm ci
+            if [ "$RUN_WEB_TESTS" = "true" ]; then
+              npm test
+            fi
+            npm run build
+          ) >"$web_log" 2>&1 &
+          web_pid=$!
+
+          py_rc=0
+          if pip install -r requirements.txt; then
+            :
+          else
+            py_rc=$?
+          fi
+
+          web_rc=0
+          if wait "$web_pid"; then
+            :
+          else
+            web_rc=$?
+          fi
+
+          echo '::group::Web build and tests'
+          cat "$web_log"
+          echo '::endgroup::'
+
+          if [ "$py_rc" -ne 0 ] || [ "$web_rc" -ne 0 ]; then
+            echo "Dependency/web step failed: pip_exit=$py_rc web_exit=$web_rc" >&2
+            exit 1
+          fi
+      - name: Install Python dependencies (cached web static assets)
+        if: steps.scope.outputs.python == 'true' && steps.scope.outputs.web != 'true' && steps.web_static_cache.outputs.cache-hit == 'true'
+        run: |
+          set -eu
+          test -f app/web_static/index.html
+          test -d app/web_static/assets
+          pip install -r requirements.txt
+      - name: Run Python tests in parallel
+        if: steps.scope.outputs.python == 'true'
+        run: python3 scripts/run-python-tests.py
+      - name: Run Web checks
+        if: steps.scope.outputs.web == 'true' && steps.scope.outputs.python != 'true'
         working-directory: web
-      - if: steps.scope.outputs.run_ci == 'true'
-        run: npm test
-        working-directory: web
-      - if: steps.scope.outputs.run_ci == 'true'
-        run: npm run build
-        working-directory: web
-      - if: steps.scope.outputs.run_ci == 'true'
-        run: python -m unittest discover -s tests
+        run: |
+          set -eu
+          npm ci
+          npm test
+          npm run build
